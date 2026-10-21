@@ -1,3 +1,14 @@
+# Kitsune
+core/static/
+*.db
+*.db-journal
+*.db-wal
+~/.kitsune/
+
+# Node
+ui/node_modules/
+ui/dist/
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[codz]
