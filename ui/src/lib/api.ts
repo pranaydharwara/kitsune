@@ -53,6 +53,10 @@ export async function getContextSnapshot(messageId: string): Promise<{ prompt_te
   return res.json();
 }
 
+export async function cancelStream(conversationId: string): Promise<void> {
+  await fetch(`${BASE}/chat/${conversationId}/cancel`, { method: 'POST' });
+}
+
 export interface LocalModel {
   id: string;
   name: string;
@@ -83,6 +87,7 @@ export interface StreamCallbacks {
   onDone: (data: { message: Message; conversation_id: string; route?: RouteInfo }) => void;
   onError: (error: string) => void;
   onRoute?: (route: RouteInfo) => void;
+  onCancelled?: () => void;
 }
 
 export function streamChat(
@@ -130,6 +135,8 @@ export function streamChat(
             const data = JSON.parse(raw);
             if (currentEvent === 'error') {
               callbacks.onError(data.error || 'Unknown error');
+            } else if (currentEvent === 'cancelled') {
+              callbacks.onCancelled?.();
             } else if (currentEvent === 'done') {
               callbacks.onDone(data);
             } else if (currentEvent === 'route') {

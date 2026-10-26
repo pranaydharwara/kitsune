@@ -1,18 +1,20 @@
 import { createPortal } from 'react-dom';
-import { ArrowUp, ChevronDown } from 'lucide-react';
+import { ArrowUp, ChevronDown, Square } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import type { ModelsResponse } from '../lib/api';
 
 interface ComposerProps {
   onSend: (message: string) => void;
   disabled: boolean;
+  isStreaming: boolean;
+  onCancel: () => void;
   mode: string;
   selectedModel: string | null;
   onSelect: (mode: string, model: string | null) => void;
   models: ModelsResponse;
 }
 
-export function Composer({ onSend, disabled, mode, selectedModel, onSelect, models }: ComposerProps) {
+export function Composer({ onSend, disabled, isStreaming, onCancel, mode, selectedModel, onSelect, models }: ComposerProps) {
   const [text, setText] = useState('');
   const [openMenu, setOpenMenu] = useState<string | null>(null);
   const [menuPos, setMenuPos] = useState<{ left: number; bottom: number } | null>(null);
@@ -152,14 +154,24 @@ export function Composer({ onSend, disabled, mode, selectedModel, onSelect, mode
             <span className="text-xs ml-1.5" style={{ color: 'var(--text-muted)', fontSize: '11px' }}>⌘/</span>
           </div>
 
-          <button
-            onClick={handleSubmit}
-            disabled={!text.trim() || disabled}
-            className="p-1.5 rounded-full transition-all cursor-pointer disabled:opacity-25 active:scale-[0.9]"
-            style={{ background: text.trim() ? 'var(--accent)' : 'var(--border)', color: '#fff' }}
-          >
-            <ArrowUp size={16} strokeWidth={2.5} />
-          </button>
+          {isStreaming ? (
+            <button
+              onClick={onCancel}
+              className="p-1.5 rounded-full transition-all cursor-pointer active:scale-[0.9]"
+              style={{ background: 'var(--text-muted)', color: '#fff' }}
+            >
+              <Square size={14} strokeWidth={2.5} fill="currentColor" />
+            </button>
+          ) : (
+            <button
+              onClick={handleSubmit}
+              disabled={!text.trim() || disabled}
+              className="p-1.5 rounded-full transition-all cursor-pointer disabled:opacity-25 active:scale-[0.9]"
+              style={{ background: text.trim() ? 'var(--accent)' : 'var(--border)', color: '#fff' }}
+            >
+              <ArrowUp size={16} strokeWidth={2.5} />
+            </button>
+          )}
         </div>
       </div>
 

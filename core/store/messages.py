@@ -15,6 +15,7 @@ async def add_message(
     text: str,
     answered_by: str | None = None,
     latency_ms: int | None = None,
+    _commit: bool = True,
 ) -> dict:
     mid = uuid.uuid4().hex[:16]
     now = _now()
@@ -23,7 +24,8 @@ async def add_message(
            VALUES (?, ?, ?, ?, ?, ?, ?)""",
         (mid, conversation_id, role, text, answered_by, latency_ms, now),
     )
-    await db.commit()
+    if _commit:
+        await db.commit()
     return {
         "id": mid,
         "conversation_id": conversation_id,

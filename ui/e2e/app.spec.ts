@@ -9,8 +9,8 @@ test.beforeEach(async ({ page }) => {
 test.describe('Empty state', () => {
   test('shows welcome screen with fox emoji and prompt suggestions', async ({ page }) => {
     await expect(page.getByText('What can I help with?')).toBeVisible();
-    await expect(page.getByText('What PRs need my review?')).toBeVisible();
-    await expect(page.getByText('Help me debug')).toBeVisible();
+    await expect(page.getByText('Summarise this article for me')).toBeVisible();
+    await expect(page.getByText('Help me write an email')).toBeVisible();
   });
 
   test('shows sidebar with new chat button and conversations', async ({ page }) => {
@@ -30,11 +30,11 @@ test.describe('Model selector', () => {
   test('Cloud dropdown shows Claude models grouped by family', async ({ page }) => {
     await page.getByRole('button', { name: /Cloud/ }).click();
     await expect(page.getByText('Auto (best available)')).toBeVisible();
-    await expect(page.getByText('Opus 4.6')).toBeVisible();
-    await expect(page.getByText('Sonnet 4.5')).toBeVisible();
+    await expect(page.getByText('Sonnet 5.5')).toBeVisible();
+    await expect(page.getByText('Opus 5.5')).toBeVisible();
     await expect(page.getByText('Haiku 3.5')).toBeVisible();
-    await expect(page.getByText('CLAUDE-4')).toBeVisible();
-    await expect(page.getByText('CLAUDE-3.5')).toBeVisible();
+    await expect(page.getByText('CLAUDE 5')).toBeVisible();
+    await expect(page.getByText('CLAUDE 4')).toBeVisible();
   });
 
   test('Local dropdown shows models with sizes', async ({ page }) => {
@@ -47,22 +47,22 @@ test.describe('Model selector', () => {
 
   test('selecting a model updates the button label', async ({ page }) => {
     await page.getByRole('button', { name: /Cloud/ }).click();
-    await page.getByText('Opus 4.6').click();
-    await expect(page.getByRole('button', { name: 'Opus 4.6' })).toBeVisible();
+    await page.getByText('Sonnet 5.5').click();
+    await expect(page.getByRole('button', { name: 'Sonnet 5.5' })).toBeVisible();
   });
 
   test('clicking Auto resets to auto mode', async ({ page }) => {
     await page.getByRole('button', { name: /Cloud/ }).click();
-    await page.getByText('Sonnet 4.5').click();
+    await page.getByText('Opus 5.5').click();
     await page.getByRole('button', { name: 'Auto' }).click();
     await expect(page.getByRole('button', { name: 'Auto' })).toBeVisible();
   });
 
   test('dropdown closes when clicking outside', async ({ page }) => {
     await page.getByRole('button', { name: /Cloud/ }).click();
-    await expect(page.getByText('Opus 4.6')).toBeVisible();
+    await expect(page.getByText('Sonnet 5.5')).toBeVisible();
     await page.getByPlaceholder('Message Kitsune...').click();
-    await expect(page.getByText('Opus 4.6')).not.toBeVisible();
+    await expect(page.getByText('Sonnet 5.5')).not.toBeVisible();
   });
 });
 

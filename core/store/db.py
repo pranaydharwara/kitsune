@@ -1,3 +1,6 @@
+import asyncio
+from contextlib import asynccontextmanager
+
 import aiosqlite
 
 from core.config import DB_PATH, KITSUNE_DIR
@@ -76,6 +79,36 @@ CREATE VIRTUAL TABLE IF NOT EXISTS conversations_fts USING fts5(
     content='conversations', content_rowid='rowid'
 );
 """
+
+
+class DBPool:
+    def __init__(self, size: int = 4):
+        self._connections: list[aiosqlite.Connection] = []
+        self._available: asyncio.Queue[aiosqlite.Connection] = asyncio.Queue()
+        self._size = size
+
+    async def init(self):
+        KITSUNE_DIR.mkdir(parents=True, exist_ok=True)
+        for _ in range(self._size):
+            db = await aiosqlite.connect(str(DB_PATH))
+            db.row_factory = aiosqlite.Row
+            await db.execute("PRAGMA journal_mode=WAL")
+            await db.execute("PRAGMA foreign_keys=ON")
+            self._connections.append(db)
+            await self._available.put(db)
+        await self._connections[0].executescript(SCHEMA)
+
+    @asynccontextmanager
+    async def acquire(self):
+        db = await self._available.get()
+        try:
+            yield db
+        finally:
+            await self._available.put(db)
+
+    async def close(self):
+        for db in self._connections:
+            await db.close()
 
 
 async def get_db() -> aiosqlite.Connection:

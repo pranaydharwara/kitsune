@@ -4,6 +4,7 @@ import { Composer } from './components/Composer';
 import { Sidebar } from './components/Sidebar';
 import type { Conversation, Message, ModelsResponse, RouteInfo } from './lib/api';
 import {
+  cancelStream,
   deleteConversation,
   getMessages,
   listConversations,
@@ -100,8 +101,28 @@ export default function App() {
         setStreamingText('');
         setError(err);
       },
+      onCancelled: () => {
+        setIsStreaming(false);
+        setStreamingText('');
+        if (activeId) {
+          getMessages(activeId).then(setMessages).catch(() => {});
+        }
+      },
     }, { mode, model: selectedModel || undefined });
     abortRef.current = controller;
+  };
+
+  const handleCancel = () => {
+    if (activeId) {
+      cancelStream(activeId);
+    }
+    abortRef.current?.abort();
+    setIsStreaming(false);
+    setStreamingText('');
+    if (activeId) {
+      getMessages(activeId).then(setMessages).catch(() => {});
+    }
+    refreshConversations();
   };
 
   const handleRetry = (messageId: string, retryWith: 'local' | 'cloud') => {
@@ -135,6 +156,13 @@ export default function App() {
         setStreamingText('');
         setError(err);
       },
+      onCancelled: () => {
+        setIsStreaming(false);
+        setStreamingText('');
+        if (activeId) {
+          getMessages(activeId).then(setMessages).catch(() => {});
+        }
+      },
     }, { mode, model: selectedModel || undefined, retryMessageId: messageId, retryWith });
     abortRef.current = controller;
   };
@@ -165,6 +193,8 @@ export default function App() {
         <Composer
           onSend={handleSend}
           disabled={isStreaming}
+          isStreaming={isStreaming}
+          onCancel={handleCancel}
           mode={mode}
           selectedModel={selectedModel}
           onSelect={(m, model) => { setMode(m); setSelectedModel(model); }}

@@ -1,3 +1,4 @@
+import json
 from collections.abc import AsyncIterator
 
 import httpx
@@ -10,9 +11,10 @@ class OllamaConnector:
     id = "ollama"
     max_context_tokens = 32_000
 
-    def __init__(self, model: str = MAIN_MODEL, base_url: str = OLLAMA_BASE_URL):
+    def __init__(self, model: str = MAIN_MODEL, base_url: str = OLLAMA_BASE_URL, http: httpx.AsyncClient | None = None):
         self.model = model
         self.base_url = base_url
+        self._http = http
 
     def available(self) -> Status:
         try:
@@ -26,12 +28,20 @@ class OllamaConnector:
             return Status.UNAVAILABLE
 
     async def stream(self, prompt: Prompt) -> AsyncIterator[Chunk]:
-        messages = []
-        if prompt.system:
-            messages.append({"role": "system", "content": prompt.system})
-        messages.append({"role": "user", "content": prompt.text})
+        if prompt.messages:
+            messages = []
+            if prompt.system:
+                messages.append({"role": "system", "content": prompt.system})
+            messages.extend(prompt.messages)
+        else:
+            messages = []
+            if prompt.system:
+                messages.append({"role": "system", "content": prompt.system})
+            messages.append({"role": "user", "content": prompt.text})
 
-        async with httpx.AsyncClient(base_url=self.base_url, timeout=120) as client:
+        client = self._http or httpx.AsyncClient(base_url=self.base_url, timeout=120)
+        owns_client = self._http is None
+        try:
             async with client.stream(
                 "POST",
                 "/api/chat",
@@ -39,21 +49,22 @@ class OllamaConnector:
                     "model": self.model,
                     "messages": messages,
                     "stream": True,
-                    "keep_alive": "30s",
+                    "keep_alive": "5m",
                 },
             ) as resp:
                 resp.raise_for_status()
                 async for line in resp.aiter_lines():
                     if not line:
                         continue
-                    import json
-
                     data = json.loads(line)
                     msg = data.get("message", {})
                     text = msg.get("content", "")
                     done = data.get("done", False)
                     if text or done:
                         yield Chunk(text=text, done=done)
+        finally:
+            if owns_client:
+                await client.aclose()
 
     def usage(self, final_event: dict) -> Usage | None:
         if not final_event:

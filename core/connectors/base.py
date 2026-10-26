@@ -27,6 +27,7 @@ class Usage:
 class Prompt:
     text: str
     system: str | None = None
+    messages: list[dict] | None = None
 
 
 class Connector(Protocol):
