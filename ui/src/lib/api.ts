@@ -51,6 +51,31 @@ export async function getContextSnapshot(messageId: string): Promise<{ prompt_te
   return res.json();
 }
 
+export interface LocalModel {
+  id: string;
+  name: string;
+  provider: 'local';
+  size?: string;
+}
+
+export interface CloudModel {
+  id: string;
+  name: string;
+  provider: 'claude';
+  family?: string;
+}
+
+export interface ModelsResponse {
+  local: LocalModel[];
+  cloud: CloudModel[];
+}
+
+export async function listModels(): Promise<ModelsResponse> {
+  const res = await fetch(`${BASE}/models`);
+  if (!res.ok) return { local: [], cloud: [] };
+  return res.json();
+}
+
 export interface StreamCallbacks {
   onToken: (text: string) => void;
   onDone: (data: { message: Message; conversation_id: string; route?: RouteInfo }) => void;
@@ -62,7 +87,7 @@ export function streamChat(
   message: string,
   conversationId: string | null,
   callbacks: StreamCallbacks,
-  options?: { mode?: string; retryMessageId?: string; retryWith?: string },
+  options?: { mode?: string; model?: string; retryMessageId?: string; retryWith?: string },
 ): AbortController {
   const controller = new AbortController();
 
@@ -73,6 +98,7 @@ export function streamChat(
       message,
       conversation_id: conversationId,
       mode: options?.mode || 'auto',
+      model: options?.model || null,
       retry_message_id: options?.retryMessageId || null,
       retry_with: options?.retryWith || null,
     }),

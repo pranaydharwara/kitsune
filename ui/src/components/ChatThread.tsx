@@ -1,4 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 import type { Message, RouteInfo } from '../lib/api';
 import { getContextSnapshot } from '../lib/api';
 
@@ -54,8 +56,8 @@ export function ChatThread({ messages, streamingText, isStreaming, error, routeI
               </div>
             )}
             <div className="py-3">
-              <div className="text-sm whitespace-pre-wrap" style={{ color: 'var(--text-primary)', lineHeight: '1.7' }}>
-                {streamingText || ''}
+              <div className="markdown-body text-sm" style={{ color: 'var(--text-primary)', lineHeight: '1.7' }}>
+                <ReactMarkdown remarkPlugins={[remarkGfm]}>{streamingText || ''}</ReactMarkdown>
                 <span className="inline-block w-1.5 h-4 ml-0.5 animate-pulse rounded-sm" style={{ background: 'var(--kitsune-orange)' }} />
               </div>
             </div>
@@ -99,9 +101,15 @@ function MessageBubble({ message, onRetry }: { message: Message; onRetry: (id: s
         className={`py-3 ${isUser ? 'px-4 rounded-2xl max-w-[85%]' : ''}`}
         style={isUser ? { background: 'var(--msg-user-bg)' } : {}}
       >
-        <div className="text-sm whitespace-pre-wrap" style={{ color: 'var(--text-primary)', lineHeight: '1.7' }}>
-          {message.text}
-        </div>
+        {isUser ? (
+          <div className="text-sm whitespace-pre-wrap" style={{ color: 'var(--text-primary)', lineHeight: '1.7' }}>
+            {message.text}
+          </div>
+        ) : (
+          <div className="markdown-body text-sm" style={{ color: 'var(--text-primary)', lineHeight: '1.7' }}>
+            <ReactMarkdown remarkPlugins={[remarkGfm]}>{message.text}</ReactMarkdown>
+          </div>
+        )}
       </div>
       {!isUser && message.answered_by && (
         <div className="mt-1 flex items-center gap-2 flex-wrap">

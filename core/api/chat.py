@@ -6,7 +6,7 @@ from fastapi import APIRouter, Request
 from pydantic import BaseModel
 from sse_starlette.sse import EventSourceResponse
 
-from core.config import MAIN_MODEL, OLLAMA_BASE_URL
+from core.config import CLAUDE_MODELS, MAIN_MODEL, OLLAMA_BASE_URL
 from core.connectors.base import Prompt
 from core.connectors.claude_cli import ClaudeCliConnector
 from core.connectors.ollama import OllamaConnector
@@ -45,8 +45,30 @@ class ChatRequest(BaseModel):
     message: str
     conversation_id: str | None = None
     mode: str = "auto"
+    model: str | None = None
     retry_message_id: str | None = None
     retry_with: str | None = None  # "local" or "cloud"
+
+
+@router.get("/models")
+async def list_models():
+    local = []
+    try:
+        r = httpx.get(f"{OLLAMA_BASE_URL}/api/tags", timeout=2)
+        for m in r.json().get("models", []):
+            size = m.get("size", 0)
+            size_label = f"{size / 1e9:.1f}GB" if size else ""
+            local.append({"id": f"local:{m['name']}", "name": m["name"], "provider": "local", "size": size_label})
+    except Exception:
+        pass
+
+    cloud = []
+    claude = ClaudeCliConnector()
+    if claude.available().value == "ready":
+        for cm in CLAUDE_MODELS:
+            cloud.append({"id": f"claude:{cm['id']}", "name": cm["name"], "provider": "claude", "family": cm["family"]})
+
+    return {"local": local, "cloud": cloud}
 
 
 @router.post("/chat")
@@ -66,7 +88,7 @@ async def chat(req: ChatRequest, request: Request):
 
     history = await get_messages(db, conv["id"])
     mode = req.retry_with or req.mode
-    connector, route_reason = _pick_connector(mode, history, conv)
+    connector, route_reason = _pick_connector(mode, history, conv, model=req.model)
 
     if isinstance(connector, ClaudeCliConnector):
         summary = conv.get("summary")
@@ -145,7 +167,15 @@ async def get_context_snapshot(message_id: str, request: Request):
     return row
 
 
-def _pick_connector(mode: str, history: list[dict], conv: dict):
+def _pick_connector(mode: str, history: list[dict], conv: dict, model: str | None = None):
+    # Explicit model selection overrides mode
+    if model:
+        provider, model_name = model.split(":", 1)
+        if provider == "claude":
+            return ClaudeCliConnector(model=model_name), f"Model: Claude {model_name}"
+        else:
+            return OllamaConnector(model=model_name), f"Model: {model_name}"
+
     claude = _get_claude_connector()
     local = _get_local_connector()
 

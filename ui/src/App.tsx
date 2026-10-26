@@ -2,11 +2,12 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { ChatThread } from './components/ChatThread';
 import { Composer } from './components/Composer';
 import { Sidebar } from './components/Sidebar';
-import type { Conversation, Message, RouteInfo } from './lib/api';
+import type { Conversation, Message, ModelsResponse, RouteInfo } from './lib/api';
 import {
   deleteConversation,
   getMessages,
   listConversations,
+  listModels,
   streamChat,
 } from './lib/api';
 
@@ -19,6 +20,8 @@ export default function App() {
   const [error, setError] = useState<string | null>(null);
   const [mode, setMode] = useState('auto');
   const [routeInfo, setRouteInfo] = useState<RouteInfo | null>(null);
+  const [models, setModels] = useState<ModelsResponse>({ local: [], cloud: [] });
+  const [selectedModel, setSelectedModel] = useState<string | null>(null);
   const abortRef = useRef<AbortController | null>(null);
 
   const refreshConversations = useCallback(async () => {
@@ -32,6 +35,7 @@ export default function App() {
 
   useEffect(() => {
     refreshConversations();
+    listModels().then(setModels).catch(() => {});
   }, [refreshConversations]);
 
   useEffect(() => {
@@ -96,7 +100,7 @@ export default function App() {
         setStreamingText('');
         setError(err);
       },
-    }, { mode });
+    }, { mode, model: selectedModel || undefined });
     abortRef.current = controller;
   };
 
@@ -131,7 +135,7 @@ export default function App() {
         setStreamingText('');
         setError(err);
       },
-    }, { mode, retryMessageId: messageId, retryWith });
+    }, { mode, model: selectedModel || undefined, retryMessageId: messageId, retryWith });
     abortRef.current = controller;
   };
 
@@ -157,7 +161,9 @@ export default function App() {
           onSend={handleSend}
           disabled={isStreaming}
           mode={mode}
-          onModeChange={setMode}
+          selectedModel={selectedModel}
+          onSelect={(m, model) => { setMode(m); setSelectedModel(model); }}
+          models={models}
         />
       </main>
     </div>
