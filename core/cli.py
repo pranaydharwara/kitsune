@@ -33,8 +33,14 @@ def _start_ollama() -> None:
     if _ollama_running():
         return
     print("  Starting Ollama...")
+    import shutil
+
+    ollama_bin = shutil.which("ollama")
+    if not ollama_bin:
+        print("  ⚠ ollama not found in PATH. Install from https://ollama.com")
+        return
     subprocess.Popen(
-        ["open", "/Applications/Ollama.app"],
+        [ollama_bin, "serve"],
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
     )
@@ -42,7 +48,7 @@ def _start_ollama() -> None:
         time.sleep(1)
         if _ollama_running():
             return
-    print("  ⚠ Ollama didn't start. Open it manually.")
+    print("  ⚠ Ollama didn't start. Run `ollama serve` manually.")
 
 
 def _start_core() -> None:

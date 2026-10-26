@@ -84,7 +84,16 @@ class KitsuneApp(rumps.App):
         webbrowser.open(CORE_URL)
 
 
+def _hide_dock_icon():
+    try:
+        from AppKit import NSApplication, NSApplicationActivationPolicyAccessory
+        NSApplication.sharedApplication().setActivationPolicy_(NSApplicationActivationPolicyAccessory)
+    except ImportError:
+        pass
+
+
 def main():
+    _hide_dock_icon()
     KitsuneApp().run()
 
 
