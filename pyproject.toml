@@ -12,6 +12,7 @@ dependencies = [
     "aiosqlite>=0.20.0",
     "pydantic>=2.10.0",
     "sse-starlette>=2.2.0",
+    "rumps>=0.4.0",
 ]
 
 [project.optional-dependencies]
@@ -22,7 +23,14 @@ dev = [
 ]
 
 [project.scripts]
-kitsune = "core.main:cli"
+kitsune = "core.cli:main"
+kitsune-menubar = "core.menubar:main"
+
+[tool.setuptools.packages.find]
+include = ["core*"]
+
+[tool.uv]
+package = true
 
 [tool.ruff]
 target-version = "py311"
