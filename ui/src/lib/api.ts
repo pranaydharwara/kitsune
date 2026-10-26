@@ -1,4 +1,6 @@
-const BASE = '/api';
+const BASE = window.location.protocol === 'tauri:'
+  ? 'http://127.0.0.1:9848/api'
+  : '/api';
 
 export interface Conversation {
   id: string;

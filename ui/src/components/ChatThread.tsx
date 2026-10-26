@@ -23,7 +23,20 @@ export function ChatThread({ messages, streamingText, isStreaming, error, routeI
   if (messages.length === 0 && !isStreaming) {
     return (
       <div className="flex-1 flex flex-col items-center justify-center gap-5">
-        <span className="text-5xl">🦊</span>
+        <svg width="64" height="64" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
+          <rect width="512" height="512" rx="112" fill="#1d1d1f"/>
+          <path d="M108 340 L168 88 L256 280 Z" fill="#FF7A3D"/>
+          <path d="M404 340 L344 88 L256 280 Z" fill="#FF7A3D"/>
+          <path d="M148 310 L178 130 L240 270 Z" fill="#E8531B"/>
+          <path d="M364 310 L334 130 L272 270 Z" fill="#E8531B"/>
+          <ellipse cx="256" cy="340" rx="120" ry="105" fill="white"/>
+          <circle cx="210" cy="310" r="18" fill="#1d1d1f"/>
+          <circle cx="302" cy="310" r="18" fill="#1d1d1f"/>
+          <circle cx="218" cy="302" r="6" fill="white"/>
+          <circle cx="310" cy="302" r="6" fill="white"/>
+          <ellipse cx="256" cy="360" rx="14" ry="10" fill="#1d1d1f"/>
+          <path d="M242 370 Q256 385 270 370" fill="none" stroke="#1d1d1f" strokeWidth="3.5" strokeLinecap="round"/>
+        </svg>
         <h2
           className="text-xl"
           style={{
@@ -36,7 +49,7 @@ export function ChatThread({ messages, streamingText, isStreaming, error, routeI
           What can I help with?
         </h2>
         <div className="flex gap-2 flex-wrap justify-center max-w-md">
-          {['What PRs need my review?', 'Explain this error', 'Draft a commit message', 'Help me debug'].map((s) => (
+          {['Summarise this article for me', 'Help me write an email', 'Explain a concept simply', 'Brainstorm ideas with me'].map((s) => (
             <span
               key={s}
               className="px-3.5 py-1.5 rounded-full text-[13px] cursor-pointer transition-all active:scale-[0.97]"

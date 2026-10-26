@@ -95,12 +95,6 @@ pub fn run() {
 
             wait_for_backend(10);
 
-            // Navigate to the backend so everything is same-origin
-            if let Some(window) = app.get_webview_window("main") {
-                let url: tauri::Url = "http://127.0.0.1:9848".parse().unwrap();
-                let _ = window.navigate(url);
-            }
-
             Ok(())
         })
         .build(tauri::generate_context!())
