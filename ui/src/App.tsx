@@ -141,6 +141,11 @@ export default function App() {
 
   return (
     <div className="flex h-screen" style={{ background: 'var(--bg-primary)' }}>
+      <div
+        data-tauri-drag-region="true"
+        className="fixed top-0 left-0 right-0 h-11 z-[9999]"
+        style={{ WebkitAppRegion: 'drag' } as React.CSSProperties}
+      />
       <Sidebar
         conversations={conversations}
         activeId={activeId}
