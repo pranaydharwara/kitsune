@@ -29,8 +29,8 @@ class ClaudeCliConnector:
             self._bin,
             "-p", prompt.text,
             "--output-format", "stream-json",
+            "--verbose",
             "--model", self.model,
-            "--no-tool-use",
         ]
         if prompt.system:
             cmd.extend(["--system-prompt", prompt.system])
@@ -53,15 +53,37 @@ class ClaudeCliConnector:
 
                 etype = event.get("type", "")
 
-                if etype == "assistant" and event.get("subtype") == "text":
-                    yield Chunk(text=event.get("content", ""))
+                if etype == "assistant":
+                    # Check for auth errors
+                    if event.get("error") == "authentication_failed":
+                        msg = event.get("message", {})
+                        content = msg.get("content", [])
+                        error_text = ""
+                        for block in content:
+                            if block.get("type") == "text":
+                                error_text = block.get("text", "")
+                        raise RuntimeError(f"Claude auth failed: {error_text}. Run `claude` in your terminal to log in.")
+
+                    # Extract text content from assistant messages
+                    msg = event.get("message", {})
+                    content = msg.get("content", [])
+                    for block in content:
+                        if block.get("type") == "text":
+                            text = block.get("text", "")
+                            if text:
+                                yield Chunk(text=text)
+
+                elif etype == "content_block_delta":
+                    delta = event.get("delta", {})
+                    if delta.get("type") == "text_delta":
+                        text = delta.get("text", "")
+                        if text:
+                            yield Chunk(text=text)
 
                 elif etype == "result":
-                    trailing = event.get("result", "")
-                    if trailing:
-                        yield Chunk(text="", done=True)
-                    else:
-                        yield Chunk(text="", done=True)
+                    if event.get("is_error"):
+                        raise RuntimeError(event.get("result", "Claude returned an error"))
+                    yield Chunk(text="", done=True)
 
         finally:
             if proc.returncode is None:
