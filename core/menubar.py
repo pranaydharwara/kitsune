@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """Kitsune menu bar app — start/stop the stack from the macOS top bar."""
 
-import subprocess
 import threading
 import webbrowser
+from pathlib import Path
 
 import rumps
 
@@ -20,9 +20,12 @@ from core.config import DEFAULT_PORT
 CORE_URL = f"http://127.0.0.1:{DEFAULT_PORT}"
 
 
+ICON_PATH = str(Path(__file__).parent.parent / "assets" / "foxTemplate.png")
+
+
 class KitsuneApp(rumps.App):
     def __init__(self):
-        super().__init__("Kitsune", title="🦊")
+        super().__init__("Kitsune", icon=ICON_PATH, template=True)
         self.status_item = rumps.MenuItem("Status: checking...")
         self.start_item = rumps.MenuItem("Start Kitsune", callback=self.on_start)
         self.stop_item = rumps.MenuItem("Stop Kitsune", callback=self.on_stop)
@@ -43,17 +46,14 @@ class KitsuneApp(rumps.App):
         ollama = _ollama_running()
         core = _core_running()
         if ollama and core:
-            self.title = "🦊"
             self.status_item.title = "Status: running"
             self.start_item.set_callback(None)
             self.stop_item.set_callback(self.on_stop)
         elif ollama:
-            self.title = "🦊"
             self.status_item.title = "Status: Ollama only"
             self.start_item.set_callback(self.on_start)
             self.stop_item.set_callback(self.on_stop)
         else:
-            self.title = "🦊"
             self.status_item.title = "Status: stopped"
             self.start_item.set_callback(self.on_start)
             self.stop_item.set_callback(None)
