@@ -11,8 +11,6 @@ import httpx
 from core.config import DEFAULT_PORT, OLLAMA_BASE_URL
 
 CORE_URL = f"http://127.0.0.1:{DEFAULT_PORT}"
-PLIST_LABEL = "com.kitsune.core"
-PLIST_PATH = f"~/Library/LaunchAgents/{PLIST_LABEL}.plist"
 
 
 def _ollama_running() -> bool:
