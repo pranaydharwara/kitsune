@@ -123,19 +123,18 @@ export function Sidebar({
                   color: isActive ? 'var(--text-primary)' : 'var(--text-secondary)',
                   fontWeight: 600,
                   background: isActive ? 'var(--surface-hover)' : 'transparent',
+                  borderLeft: isActive ? '2px solid var(--accent)' : '2px solid transparent',
                 }}
                 onClick={() => {
                   if (isActive) {
-                    onSelectProject(null);
+                    toggleCollapse(project.id);
                   } else {
                     onSelectProject(project.id);
                     if (isCollapsed) toggleCollapse(project.id);
                   }
                 }}
               >
-                <span onClick={(e) => { e.stopPropagation(); toggleCollapse(project.id); }}>
-                  {isCollapsed ? <ChevronRight size={13} /> : <ChevronDown size={13} />}
-                </span>
+                {isCollapsed ? <ChevronRight size={13} /> : <ChevronDown size={13} />}
                 <span className="truncate flex-1" title={project.path}>
                   {project.name}
                 </span>

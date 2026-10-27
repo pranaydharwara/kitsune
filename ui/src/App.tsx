@@ -264,6 +264,24 @@ export default function App() {
           speed={speed}
           onRetry={handleRetry}
         />
+        {activeProjectId && !activeId && (
+          <div className="px-6">
+            <div
+              className="max-w-[720px] mx-auto flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs mb-1"
+              style={{ background: 'var(--surface-hover)', color: 'var(--text-secondary)' }}
+            >
+              <span style={{ color: 'var(--accent)' }}>●</span>
+              <span>New chat in <strong style={{ color: 'var(--text-primary)' }}>{projects.find(p => p.id === activeProjectId)?.name}</strong></span>
+              <button
+                onClick={() => setActiveProjectId(null)}
+                className="ml-auto text-[10px] px-1.5 py-0.5 rounded cursor-pointer"
+                style={{ color: 'var(--text-muted)' }}
+              >
+                ✕
+              </button>
+            </div>
+          </div>
+        )}
         <Composer
           onSend={handleSend}
           disabled={isStreaming}
