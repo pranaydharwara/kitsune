@@ -15,14 +15,17 @@ async def add_message(
     text: str,
     answered_by: str | None = None,
     latency_ms: int | None = None,
+    tokens_in: int | None = None,
+    tokens_out: int | None = None,
+    cost_usd: float | None = None,
     _commit: bool = True,
 ) -> dict:
     mid = uuid.uuid4().hex[:16]
     now = _now()
     await db.execute(
-        """INSERT INTO messages (id, conversation_id, role, text, answered_by, latency_ms, created_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?)""",
-        (mid, conversation_id, role, text, answered_by, latency_ms, now),
+        """INSERT INTO messages (id, conversation_id, role, text, answered_by, latency_ms, tokens_in, tokens_out, cost_usd, created_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+        (mid, conversation_id, role, text, answered_by, latency_ms, tokens_in, tokens_out, cost_usd, now),
     )
     if _commit:
         await db.commit()
@@ -33,6 +36,9 @@ async def add_message(
         "text": text,
         "answered_by": answered_by,
         "latency_ms": latency_ms,
+        "tokens_in": tokens_in,
+        "tokens_out": tokens_out,
+        "cost_usd": cost_usd,
         "created_at": now,
     }
 

@@ -11,6 +11,7 @@ from core.connectors.base import Chunk, Prompt, Status, Usage
 class ClaudeCliConnector:
     id = "claude"
     max_context_tokens = 200_000
+    last_usage: Usage | None = None
 
     def __init__(self, model: str = "sonnet"):
         self.model = model
@@ -83,6 +84,12 @@ class ClaudeCliConnector:
                 elif etype == "result":
                     if event.get("is_error"):
                         raise RuntimeError(event.get("result", "Claude returned an error"))
+                    usage = event.get("usage", {})
+                    if usage:
+                        self.last_usage = Usage(
+                            tokens_in=usage.get("input_tokens"),
+                            tokens_out=usage.get("output_tokens"),
+                        )
                     yield Chunk(text="", done=True)
 
         finally:

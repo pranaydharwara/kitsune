@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { Check, Copy } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import type { Message, RouteInfo } from '../lib/api';
@@ -10,10 +11,11 @@ interface ChatThreadProps {
   isStreaming: boolean;
   error: string | null;
   routeInfo: RouteInfo | null;
+  speed: number | null;
   onRetry: (messageId: string, retryWith: 'local' | 'cloud') => void;
 }
 
-export function ChatThread({ messages, streamingText, isStreaming, error, routeInfo, onRetry }: ChatThreadProps) {
+export function ChatThread({ messages, streamingText, isStreaming, error, routeInfo, speed: _speed, onRetry }: ChatThreadProps) {
   const bottomRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -121,13 +123,32 @@ function RouteBadge({ route }: { route: RouteInfo }) {
   );
 }
 
+function CopyButton({ text }: { text: string }) {
+  const [copied, setCopied] = useState(false);
+  const handleCopy = async () => {
+    await navigator.clipboard.writeText(text);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1500);
+  };
+  return (
+    <button
+      onClick={handleCopy}
+      className="p-1.5 rounded-lg cursor-pointer transition-all active:scale-[0.9] opacity-0 group-hover:opacity-100"
+      style={{ color: 'var(--text-muted)' }}
+      title="Copy message"
+    >
+      {copied ? <Check size={13} /> : <Copy size={13} />}
+    </button>
+  );
+}
+
 function MessageBubble({ message, onRetry }: { message: Message; onRetry: (id: string, retryWith: 'local' | 'cloud') => void }) {
   const isUser = message.role === 'user';
   const isCloud = message.answered_by?.startsWith('claude');
   const isLocal = message.answered_by?.startsWith('local');
 
   return (
-    <div className={`mb-8 ${isUser ? 'flex justify-end' : ''}`}>
+    <div className={`group mb-8 ${isUser ? 'flex justify-end' : ''}`}>
       <div
         className={`py-3 ${isUser ? 'px-4 rounded-2xl max-w-[85%]' : ''}`}
         style={isUser ? { background: 'var(--msg-user-bg)' } : {}}
@@ -145,8 +166,9 @@ function MessageBubble({ message, onRetry }: { message: Message; onRetry: (id: s
       {!isUser && message.answered_by && (
         <div className="mt-2 flex items-center gap-2 flex-wrap">
           <span className="text-xs" style={{ color: 'var(--text-muted)', fontSize: '12px' }}>
-            {formatModelBadge(message.answered_by, message.latency_ms)}
+            {formatModelBadge(message.answered_by, message.latency_ms, message.tokens_in, message.tokens_out)}
           </span>
+          <CopyButton text={message.text} />
           {isLocal && (
             <button
               onClick={() => onRetry(message.id, 'cloud')}
@@ -210,10 +232,11 @@ function InspectorLink({ messageId }: { messageId: string }) {
   );
 }
 
-function formatModelBadge(answeredBy: string, latencyMs?: number): string {
+function formatModelBadge(answeredBy: string, latencyMs?: number, _tokensIn?: number, tokensOut?: number): string {
   const parts = answeredBy.split(':');
   const source = parts[0] === 'local' ? 'Local' : 'Claude';
   const model = parts[1] || '';
   const latency = latencyMs ? ` · ${(latencyMs / 1000).toFixed(1)}s` : '';
-  return `${source} · ${model}${latency}`;
+  const tokens = tokensOut ? ` · ${tokensOut} tok` : '';
+  return `${source} · ${model}${latency}${tokens}`;
 }

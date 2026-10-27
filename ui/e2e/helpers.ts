@@ -37,8 +37,16 @@ export async function mockApi(page: Page) {
     route.fulfill({ json: [] })
   );
 
+  await page.route('**/api/settings', (route) =>
+    route.fulfill({ json: { anthropic_api_key: '', has_api_key: false, default_mode: 'auto', default_model: null, theme: 'system' } })
+  );
+
+  await page.route('**/api/usage', (route) =>
+    route.fulfill({ json: { total_messages: 0, cloud_messages: 0, local_messages: 0, total_tokens_in: 0, total_tokens_out: 0, total_cost: 0 } })
+  );
+
   await page.route('**/api/chat', (route) => {
-    const body = `data: {"type":"route","source":"local:qwen3:4b","reason":"auto-routed local"}\n\ndata: {"type":"token","text":"Hello"}\n\ndata: {"type":"token","text":" from"}\n\ndata: {"type":"token","text":" mock"}\n\ndata: {"type":"done","conversation_id":"conv-new","route":{"source":"local:qwen3:4b","reason":"auto-routed local"}}\n\n`;
+    const body = `data: {"type":"route","source":"local:qwen3:4b","reason":"auto-routed local"}\n\ndata: {"type":"token","text":"Hello"}\n\ndata: {"type":"token","text":" from"}\n\ndata: {"type":"token","text":" mock"}\n\ndata: {"type":"done","conversation_id":"conv-new","route":{"source":"local:qwen3:4b","reason":"auto-routed local"},"speed":42.5}\n\n`;
     return route.fulfill({
       status: 200,
       headers: { 'content-type': 'text/event-stream' },

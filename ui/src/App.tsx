@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { ChatThread } from './components/ChatThread';
 import { Composer } from './components/Composer';
+import { Settings } from './components/Settings';
 import { Sidebar } from './components/Sidebar';
 import type { Conversation, Message, ModelsResponse, RouteInfo } from './lib/api';
 import {
@@ -23,6 +24,8 @@ export default function App() {
   const [routeInfo, setRouteInfo] = useState<RouteInfo | null>(null);
   const [models, setModels] = useState<ModelsResponse>({ local: [], cloud: [] });
   const [selectedModel, setSelectedModel] = useState<string | null>(null);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [speed, setSpeed] = useState<number | null>(null);
   const abortRef = useRef<AbortController | null>(null);
 
   const refreshConversations = useCallback(async () => {
@@ -78,6 +81,7 @@ export default function App() {
     setMessages((prev) => [...prev, userMessage]);
     setStreamingText('');
     setIsStreaming(true);
+    setSpeed(null);
 
     const controller = streamChat(text, activeId, {
       onToken: (token) => {
@@ -93,6 +97,7 @@ export default function App() {
           setActiveId(data.conversation_id);
         }
         if (data.route) setRouteInfo(data.route);
+        if (data.speed) setSpeed(data.speed);
         getMessages(data.conversation_id).then(setMessages).catch(() => {});
         refreshConversations();
       },
@@ -130,6 +135,7 @@ export default function App() {
     setRouteInfo(null);
     setStreamingText('');
     setIsStreaming(true);
+    setSpeed(null);
 
     // Remove the last assistant message (the one being retried)
     setMessages((prev) => prev.filter((m) => m.id !== messageId));
@@ -148,6 +154,7 @@ export default function App() {
         setIsStreaming(false);
         setStreamingText('');
         if (data.route) setRouteInfo(data.route);
+        if (data.speed) setSpeed(data.speed);
         getMessages(data.conversation_id).then(setMessages).catch(() => {});
         refreshConversations();
       },
@@ -180,6 +187,7 @@ export default function App() {
         onSelect={setActiveId}
         onNew={handleNewChat}
         onDelete={handleDelete}
+        onOpenSettings={() => setSettingsOpen(true)}
       />
       <main className="flex-1 flex flex-col min-w-0">
         <ChatThread
@@ -188,6 +196,7 @@ export default function App() {
           isStreaming={isStreaming}
           error={error}
           routeInfo={routeInfo}
+          speed={speed}
           onRetry={handleRetry}
         />
         <Composer
@@ -201,6 +210,7 @@ export default function App() {
           models={models}
         />
       </main>
+      <Settings open={settingsOpen} onClose={() => setSettingsOpen(false)} />
     </div>
   );
 }

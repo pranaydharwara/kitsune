@@ -7,7 +7,7 @@ from fastapi import APIRouter, Request
 from pydantic import BaseModel
 from sse_starlette.sse import EventSourceResponse
 
-from core.config import CLAUDE_MODELS, MAIN_MODEL, OLLAMA_BASE_URL
+from core.config import API_TO_CLI, CLAUDE_MODELS, MAIN_MODEL, OLLAMA_BASE_URL
 from core.connectors.base import Prompt
 from core.connectors.claude_cli import ClaudeCliConnector
 from core.connectors.claude_sdk import ClaudeSdkConnector
@@ -190,10 +190,22 @@ async def chat(req: ChatRequest, request: Request):
             return
 
         latency = int((time.monotonic() - start) * 1000)
+        usage = getattr(connector, "last_usage", None)
+        tokens_in = usage.tokens_in if usage else None
+        tokens_out = usage.tokens_out if usage else None
+        cost = None
+        if tokens_in and tokens_out:
+            cost = _estimate_cost(connector.model, tokens_in, tokens_out)
+
+        elapsed_s = (time.monotonic() - start) or 0.001
+        tok_count = tokens_out or (len(full_text) // 4)
+        speed = round(tok_count / elapsed_s, 1)
+
         async with pool.acquire() as db:
             msg = await add_message(
                 db, conv_id, "assistant", full_text,
                 answered_by=source, latency_ms=latency,
+                tokens_in=tokens_in, tokens_out=tokens_out, cost_usd=cost,
                 _commit=False,
             )
             await db.execute(
@@ -208,11 +220,15 @@ async def chat(req: ChatRequest, request: Request):
                 "message": msg,
                 "conversation_id": conv_id,
                 "route": {"source": source, "reason": route_reason},
+                "speed": speed,
             }),
         }
 
         asyncio.get_event_loop().create_task(
             _background_summary(pool, conv_id)
+        )
+        asyncio.get_event_loop().create_task(
+            _background_auto_title(pool, http, conv_id)
         )
 
     return EventSourceResponse(event_stream())
@@ -245,7 +261,10 @@ async def _pick_connector(mode: str, history: list[dict], conv: dict, http: http
             sdk = ClaudeSdkConnector(model=model_name)
             if sdk.available().value == "ready":
                 return sdk, f"Model: Claude {model_name}"
-            return ClaudeCliConnector(model=model_name), f"Model: Claude {model_name} (CLI)"
+            cli_model = API_TO_CLI.get(model_name)
+            if not cli_model:
+                raise RuntimeError(f"Model {model_name} requires an API key (not available via CLI)")
+            return ClaudeCliConnector(model=cli_model), f"Model: Claude {model_name} (CLI)"
         else:
             return OllamaConnector(model=model_name, http=http), f"Model: {model_name}"
 
@@ -265,25 +284,80 @@ async def _pick_connector(mode: str, history: list[dict], conv: dict, http: http
         return local, "New conversation, starting local"
 
     last_msg = history[-1]["text"] if history else ""
+    score, reason = _complexity_score(last_msg)
 
-    if len(last_msg) > 2000 and claude_ready:
-        return claude, "Long/complex message detected"
+    if score >= 3 and claude_ready:
+        return claude, f"Auto-escalated: {reason}"
+
+    return local, f"Auto: handled locally (complexity {score})"
+
+
+def _complexity_score(text: str) -> tuple[int, str]:
+    score = 0
+    reasons = []
+
+    if len(text) > 2000:
+        score += 2
+        reasons.append("long message")
+    elif len(text) > 800:
+        score += 1
+        reasons.append("medium length")
+
+    if text.count("```") >= 2:
+        score += 2
+        reasons.append("code blocks")
+    elif text.count("`") >= 4:
+        score += 1
+        reasons.append("inline code")
+
+    steps = sum(1 for line in text.split("\n") if line.strip()[:2] in ("1.", "2.", "3.", "4.", "5.", "6.", "7.", "8.", "9.", "- ", "* "))
+    if steps >= 4:
+        score += 2
+        reasons.append(f"{steps} steps")
+    elif steps >= 2:
+        score += 1
+        reasons.append(f"{steps} steps")
 
     escalation_keywords = [
-        "review this pr", "code review", "architecture",
-        "security audit", "refactor", "design pattern",
-        "explain this codebase", "write a spec",
+        "review this pr", "code review", "architecture", "security audit",
+        "refactor", "design pattern", "explain this codebase", "write a spec",
+        "compare", "analyze", "pros and cons", "trade-offs", "in depth",
+        "comprehensive", "detailed analysis", "step by step",
     ]
-    lower = last_msg.lower()
+    lower = text.lower()
     for kw in escalation_keywords:
-        if kw in lower and claude_ready:
-            return claude, f"Escalation keyword: '{kw}'"
+        if kw in lower:
+            score += 2
+            reasons.append(f"'{kw}'")
+            break
 
-    return local, "Auto: handled locally"
+    if len(text.split()) > 50 and ("?" in text) and text.count("?") >= 3:
+        score += 1
+        reasons.append("multi-question")
+
+    return score, ", ".join(reasons) if reasons else "simple"
 
 
 def _build_local_messages(history: list[dict]) -> list[dict]:
     return [{"role": msg["role"], "content": msg["text"]} for msg in history]
+
+
+COST_PER_M = {
+    "claude-sonnet-5-5-20250514": (3.0, 15.0),
+    "claude-opus-5-5-20250514": (15.0, 75.0),
+    "claude-haiku-5-5-20250514": (0.8, 4.0),
+    "claude-opus-4-6-20250514": (15.0, 75.0),
+    "claude-sonnet-4-5-20250514": (3.0, 15.0),
+    "claude-sonnet-4-20250514": (3.0, 15.0),
+    "claude-haiku-3-5-20241022": (0.8, 4.0),
+}
+
+
+def _estimate_cost(model: str, tokens_in: int, tokens_out: int) -> float | None:
+    rates = COST_PER_M.get(model)
+    if not rates:
+        return None
+    return round((tokens_in * rates[0] + tokens_out * rates[1]) / 1_000_000, 6)
 
 
 async def _background_summary(pool, conversation_id: str):
@@ -291,5 +365,43 @@ async def _background_summary(pool, conversation_id: str):
         async with pool.acquire() as db:
             history = await get_messages(db, conversation_id)
             await maybe_update_summary(db, conversation_id, history)
+    except Exception:
+        pass
+
+
+async def _background_auto_title(pool, http: httpx.AsyncClient, conversation_id: str):
+    try:
+        async with pool.acquire() as db:
+            conv = await get_conversation(db, conversation_id)
+            if not conv:
+                return
+            history = await get_messages(db, conversation_id)
+            if len(history) != 2:
+                return
+            user_msg = history[0]["text"] if history[0]["role"] == "user" else ""
+            assistant_msg = history[1]["text"] if len(history) > 1 else ""
+            if not user_msg:
+                return
+            if conv["title"] != user_msg[:60]:
+                return
+
+        prompt = (
+            f"Generate a short title (3-6 words, no quotes) for this conversation:\n"
+            f"User: {user_msg[:300]}\nAssistant: {assistant_msg[:300]}"
+        )
+        try:
+            r = await http.post("/api/chat", json={
+                "model": MAIN_MODEL,
+                "messages": [{"role": "user", "content": prompt}],
+                "stream": False,
+                "keep_alive": "5m",
+            }, timeout=10)
+            data = r.json()
+            title = data.get("message", {}).get("content", "").strip().strip('"\'')
+            if title and 2 < len(title) < 60:
+                async with pool.acquire() as db:
+                    await update_conversation(db, conversation_id, title=title)
+        except Exception:
+            pass
     except Exception:
         pass

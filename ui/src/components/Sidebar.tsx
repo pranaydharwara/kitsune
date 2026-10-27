@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Plus, Search, Trash2, X } from 'lucide-react';
+import { Plus, Search, Settings, Trash2, X } from 'lucide-react';
 import type { Conversation } from '../lib/api';
 
 interface SidebarProps {
@@ -8,9 +8,10 @@ interface SidebarProps {
   onSelect: (id: string) => void;
   onNew: () => void;
   onDelete: (id: string) => void;
+  onOpenSettings: () => void;
 }
 
-export function Sidebar({ conversations, activeId, onSelect, onNew, onDelete }: SidebarProps) {
+export function Sidebar({ conversations, activeId, onSelect, onNew, onDelete, onOpenSettings }: SidebarProps) {
   const [query, setQuery] = useState('');
 
   const filtered = query
@@ -115,7 +116,13 @@ export function Sidebar({ conversations, activeId, onSelect, onNew, onDelete }: 
             <path d="M242 370 Q256 385 270 370" fill="none" stroke="#1d1d1f" strokeWidth="3.5" strokeLinecap="round"/>
           </svg>
           <span className="font-medium" style={{ color: 'var(--text-secondary)', fontSize: '13px' }}>Kitsune</span>
-          <span className="text-xs ml-auto" style={{ color: 'var(--text-muted)', fontSize: '11px' }}>v0.1</span>
+          <button
+            onClick={onOpenSettings}
+            className="ml-auto p-1.5 rounded-lg cursor-pointer transition-all active:scale-[0.9]"
+            style={{ color: 'var(--text-muted)' }}
+          >
+            <Settings size={15} />
+          </button>
         </div>
       </div>
     </aside>

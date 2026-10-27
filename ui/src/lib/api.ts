@@ -18,6 +18,9 @@ export interface Message {
   text: string;
   answered_by?: string;
   latency_ms?: number;
+  tokens_in?: number;
+  tokens_out?: number;
+  cost_usd?: number;
   created_at: string;
 }
 
@@ -84,10 +87,54 @@ export async function listModels(): Promise<ModelsResponse> {
 
 export interface StreamCallbacks {
   onToken: (text: string) => void;
-  onDone: (data: { message: Message; conversation_id: string; route?: RouteInfo }) => void;
+  onDone: (data: { message: Message; conversation_id: string; route?: RouteInfo; speed?: number }) => void;
   onError: (error: string) => void;
   onRoute?: (route: RouteInfo) => void;
   onCancelled?: () => void;
+}
+
+export interface Settings {
+  anthropic_api_key: string;
+  has_api_key: boolean;
+  default_mode: string;
+  default_model: string | null;
+  theme: string;
+}
+
+export interface UsageStats {
+  total_messages: number;
+  cloud_messages: number;
+  local_messages: number;
+  total_tokens_in: number;
+  total_tokens_out: number;
+  total_cost: number;
+}
+
+export async function getSettings(): Promise<Settings> {
+  const res = await fetch(`${BASE}/settings`);
+  return res.json();
+}
+
+export async function updateSettings(updates: Partial<Settings>): Promise<void> {
+  await fetch(`${BASE}/settings`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(updates),
+  });
+}
+
+export async function clearApiKey(): Promise<void> {
+  await fetch(`${BASE}/settings/api-key`, { method: 'DELETE' });
+}
+
+export async function getUsage(): Promise<UsageStats> {
+  const res = await fetch(`${BASE}/usage`);
+  return res.json();
+}
+
+export async function exportConversation(conversationId: string): Promise<string> {
+  const msgs = await getMessages(conversationId);
+  return msgs.map((m) => `## ${m.role === 'user' ? 'You' : 'Kitsune'}\n\n${m.text}`).join('\n\n---\n\n');
 }
 
 export function streamChat(
