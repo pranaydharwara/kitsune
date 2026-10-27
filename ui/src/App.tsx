@@ -84,9 +84,10 @@ export default function App() {
     refreshProjects();
   };
 
+  const [addingProject, setAddingProject] = useState(false);
+
   const handleAddProject = async () => {
     try {
-      // Use Tauri dialog to pick a folder
       const { open } = await import('@tauri-apps/plugin-dialog');
       const selected = await open({ directory: true, multiple: false, title: 'Select project folder' });
       if (selected) {
@@ -94,12 +95,15 @@ export default function App() {
         refreshProjects();
       }
     } catch {
-      // Fallback: prompt for path
-      const path = window.prompt('Enter project folder path:');
-      if (path) {
-        await createProject(path);
-        refreshProjects();
-      }
+      setAddingProject(true);
+    }
+  };
+
+  const handleAddProjectPath = async (path: string) => {
+    setAddingProject(false);
+    if (path.trim()) {
+      await createProject(path.trim());
+      refreshProjects();
     }
   };
 
@@ -139,14 +143,13 @@ export default function App() {
       onRoute: (route) => {
         setRouteInfo(route);
       },
-      onDone: (data) => {
+      onDone: async (data) => {
         setIsStreaming(false);
         setStreamingText('');
         if (!activeId) {
           setActiveId(data.conversation_id);
-          // If we have an active project, assign the new conversation to it
           if (activeProjectId) {
-            updateConversation(data.conversation_id, { project_id: activeProjectId });
+            await updateConversation(data.conversation_id, { project_id: activeProjectId });
           }
         }
         if (data.route) setRouteInfo(data.route);
@@ -240,11 +243,14 @@ export default function App() {
         projects={projects}
         activeId={activeId}
         activeProjectId={activeProjectId}
+        addingProject={addingProject}
         onSelect={setActiveId}
         onNew={handleNewChat}
         onDelete={handleDelete}
         onOpenSettings={() => setSettingsOpen(true)}
         onAddProject={handleAddProject}
+        onAddProjectPath={handleAddProjectPath}
+        onCancelAddProject={() => setAddingProject(false)}
         onDeleteProject={handleDeleteProject}
         onSelectProject={handleSelectProject}
       />

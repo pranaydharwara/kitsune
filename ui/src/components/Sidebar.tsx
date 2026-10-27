@@ -7,11 +7,14 @@ interface SidebarProps {
   projects: Project[];
   activeId: string | null;
   activeProjectId: string | null;
+  addingProject: boolean;
   onSelect: (id: string) => void;
   onNew: () => void;
   onDelete: (id: string) => void;
   onOpenSettings: () => void;
   onAddProject: () => void;
+  onAddProjectPath: (path: string) => void;
+  onCancelAddProject: () => void;
   onDeleteProject: (id: string) => void;
   onSelectProject: (id: string | null) => void;
 }
@@ -21,11 +24,14 @@ export function Sidebar({
   projects,
   activeId,
   activeProjectId,
+  addingProject,
   onSelect,
   onNew,
   onDelete,
   onOpenSettings,
   onAddProject,
+  onAddProjectPath,
+  onCancelAddProject,
   onDeleteProject,
   onSelectProject,
 }: SidebarProps) {
@@ -119,11 +125,17 @@ export function Sidebar({
                   background: isActive ? 'var(--surface-hover)' : 'transparent',
                 }}
                 onClick={() => {
-                  toggleCollapse(project.id);
-                  onSelectProject(isActive ? null : project.id);
+                  if (isActive) {
+                    onSelectProject(null);
+                  } else {
+                    onSelectProject(project.id);
+                    if (isCollapsed) toggleCollapse(project.id);
+                  }
                 }}
               >
-                {isCollapsed ? <ChevronRight size={13} /> : <ChevronDown size={13} />}
+                <span onClick={(e) => { e.stopPropagation(); toggleCollapse(project.id); }}>
+                  {isCollapsed ? <ChevronRight size={13} /> : <ChevronDown size={13} />}
+                </span>
                 <span className="truncate flex-1" title={project.path}>
                   {project.name}
                 </span>
@@ -167,15 +179,35 @@ export function Sidebar({
           );
         })}
 
-        {/* Add project button */}
-        <button
-          onClick={onAddProject}
-          className="flex items-center gap-2 w-full px-3 py-1.5 rounded-lg text-xs transition-all cursor-pointer active:scale-[0.97] mb-2"
-          style={{ color: 'var(--text-muted)' }}
-        >
-          <FolderPlus size={13} />
-          Add project
-        </button>
+        {/* Add project */}
+        {addingProject ? (
+          <div className="px-2 mb-2">
+            <input
+              autoFocus
+              type="text"
+              placeholder="Enter folder path..."
+              className="w-full px-2.5 py-1.5 rounded-lg text-xs bg-transparent outline-none"
+              style={{ color: 'var(--text-primary)', border: '1px solid var(--accent)' }}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') onAddProjectPath((e.target as HTMLInputElement).value);
+                if (e.key === 'Escape') onCancelAddProject();
+              }}
+              onBlur={(e) => {
+                if (e.target.value.trim()) onAddProjectPath(e.target.value);
+                else onCancelAddProject();
+              }}
+            />
+          </div>
+        ) : (
+          <button
+            onClick={onAddProject}
+            className="flex items-center gap-2 w-full px-3 py-1.5 rounded-lg text-xs transition-all cursor-pointer active:scale-[0.97] mb-2"
+            style={{ color: 'var(--text-muted)' }}
+          >
+            <FolderPlus size={13} />
+            Add project
+          </button>
+        )}
 
         {/* Ungrouped conversations */}
         {ungrouped.length > 0 && (
