@@ -2,9 +2,19 @@ const BASE = window.location.protocol === 'tauri:'
   ? 'http://127.0.0.1:9848/api'
   : '/api';
 
+export interface Project {
+  id: string;
+  name: string;
+  path: string;
+  icon: string | null;
+  conversation_count: number;
+  created_at: string;
+}
+
 export interface Conversation {
   id: string;
   title: string;
+  project_id: string | null;
   mode: string;
   escalated: boolean;
   created_at: string;
@@ -29,6 +39,24 @@ export interface RouteInfo {
   reason: string;
 }
 
+export async function listProjects(): Promise<Project[]> {
+  const res = await fetch(`${BASE}/projects`);
+  return res.json();
+}
+
+export async function createProject(path: string, name?: string): Promise<Project> {
+  const res = await fetch(`${BASE}/projects`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ path, name }),
+  });
+  return res.json();
+}
+
+export async function deleteProject(id: string): Promise<void> {
+  await fetch(`${BASE}/projects/${id}`, { method: 'DELETE' });
+}
+
 export async function listConversations(): Promise<Conversation[]> {
   const res = await fetch(`${BASE}/conversations`);
   return res.json();
@@ -43,7 +71,7 @@ export async function deleteConversation(id: string): Promise<void> {
   await fetch(`${BASE}/conversations/${id}`, { method: 'DELETE' });
 }
 
-export async function updateConversation(id: string, fields: { title?: string; mode?: string }): Promise<void> {
+export async function updateConversation(id: string, fields: { title?: string; mode?: string; project_id?: string | null }): Promise<void> {
   await fetch(`${BASE}/conversations/${id}`, {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json' },
@@ -165,7 +193,7 @@ export function streamChat(
   message: string,
   conversationId: string | null,
   callbacks: StreamCallbacks,
-  options?: { mode?: string; model?: string; retryMessageId?: string; retryWith?: string },
+  options?: { mode?: string; model?: string; retryMessageId?: string; retryWith?: string; projectId?: string },
 ): AbortController {
   const controller = new AbortController();
 
@@ -175,6 +203,7 @@ export function streamChat(
     body: JSON.stringify({
       message,
       conversation_id: conversationId,
+      project_id: options?.projectId || null,
       mode: options?.mode || 'auto',
       model: options?.model || null,
       retry_message_id: options?.retryMessageId || null,

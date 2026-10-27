@@ -3,19 +3,25 @@ import { ChatThread } from './components/ChatThread';
 import { Composer } from './components/Composer';
 import { Settings } from './components/Settings';
 import { Sidebar } from './components/Sidebar';
-import type { Conversation, Message, ModelsResponse, RouteInfo } from './lib/api';
+import type { Conversation, Message, ModelsResponse, Project, RouteInfo } from './lib/api';
 import {
   cancelStream,
+  createProject,
   deleteConversation,
+  deleteProject,
   getMessages,
   listConversations,
   listModels,
+  listProjects,
   streamChat,
+  updateConversation,
 } from './lib/api';
 
 export default function App() {
   const [conversations, setConversations] = useState<Conversation[]>([]);
+  const [projects, setProjects] = useState<Project[]>([]);
   const [activeId, setActiveId] = useState<string | null>(null);
+  const [activeProjectId, setActiveProjectId] = useState<string | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
   const [streamingText, setStreamingText] = useState('');
   const [isStreaming, setIsStreaming] = useState(false);
@@ -37,10 +43,20 @@ export default function App() {
     }
   }, []);
 
+  const refreshProjects = useCallback(async () => {
+    try {
+      const projs = await listProjects();
+      setProjects(projs);
+    } catch {
+      // backend might not be running
+    }
+  }, []);
+
   useEffect(() => {
     refreshConversations();
+    refreshProjects();
     listModels().then(setModels).catch(() => {});
-  }, [refreshConversations]);
+  }, [refreshConversations, refreshProjects]);
 
   useEffect(() => {
     if (activeId) {
@@ -65,6 +81,39 @@ export default function App() {
       setMessages([]);
     }
     refreshConversations();
+    refreshProjects();
+  };
+
+  const handleAddProject = async () => {
+    try {
+      // Use Tauri dialog to pick a folder
+      const { open } = await import('@tauri-apps/plugin-dialog');
+      const selected = await open({ directory: true, multiple: false, title: 'Select project folder' });
+      if (selected) {
+        await createProject(selected as string);
+        refreshProjects();
+      }
+    } catch {
+      // Fallback: prompt for path
+      const path = window.prompt('Enter project folder path:');
+      if (path) {
+        await createProject(path);
+        refreshProjects();
+      }
+    }
+  };
+
+  const handleDeleteProject = async (id: string) => {
+    await deleteProject(id);
+    if (activeProjectId === id) {
+      setActiveProjectId(null);
+    }
+    refreshProjects();
+    refreshConversations();
+  };
+
+  const handleSelectProject = (id: string | null) => {
+    setActiveProjectId(id);
   };
 
   const handleSend = (text: string) => {
@@ -95,11 +144,16 @@ export default function App() {
         setStreamingText('');
         if (!activeId) {
           setActiveId(data.conversation_id);
+          // If we have an active project, assign the new conversation to it
+          if (activeProjectId) {
+            updateConversation(data.conversation_id, { project_id: activeProjectId });
+          }
         }
         if (data.route) setRouteInfo(data.route);
         if (data.speed) setSpeed(data.speed);
         getMessages(data.conversation_id).then(setMessages).catch(() => {});
         refreshConversations();
+        refreshProjects();
       },
       onError: (err) => {
         setIsStreaming(false);
@@ -113,7 +167,7 @@ export default function App() {
           getMessages(activeId).then(setMessages).catch(() => {});
         }
       },
-    }, { mode, model: selectedModel || undefined });
+    }, { mode, model: selectedModel || undefined, projectId: activeProjectId || undefined });
     abortRef.current = controller;
   };
 
@@ -183,11 +237,16 @@ export default function App() {
       />
       <Sidebar
         conversations={conversations}
+        projects={projects}
         activeId={activeId}
+        activeProjectId={activeProjectId}
         onSelect={setActiveId}
         onNew={handleNewChat}
         onDelete={handleDelete}
         onOpenSettings={() => setSettingsOpen(true)}
+        onAddProject={handleAddProject}
+        onDeleteProject={handleDeleteProject}
+        onSelectProject={handleSelectProject}
       />
       <main className="flex-1 flex flex-col min-w-0">
         <ChatThread

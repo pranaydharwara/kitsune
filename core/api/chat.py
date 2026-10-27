@@ -76,6 +76,7 @@ def _get_claude_connector() -> ClaudeSdkConnector | ClaudeCliConnector:
 class ChatRequest(BaseModel):
     message: str
     conversation_id: str | None = None
+    project_id: str | None = None
     mode: str = "auto"
     model: str | None = None
     retry_message_id: str | None = None
@@ -112,9 +113,9 @@ async def chat(req: ChatRequest, request: Request):
         if req.conversation_id:
             conv = await get_conversation(db, req.conversation_id)
             if not conv:
-                conv = await create_conversation(db, title=req.message[:60])
+                conv = await create_conversation(db, title=req.message[:60], project_id=req.project_id)
         else:
-            conv = await create_conversation(db, title=req.message[:60])
+            conv = await create_conversation(db, title=req.message[:60], project_id=req.project_id)
 
         if not req.retry_message_id:
             await add_message(db, conv["id"], "user", req.message)
