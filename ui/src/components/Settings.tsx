@@ -28,6 +28,18 @@ export function Settings({ open, onClose, onRefresh }: SettingsProps) {
     }
   }, [open]);
 
+  const doImport = async (file: File) => {
+    setImportStatus('Importing...');
+    try {
+      const result = await importConversations(file);
+      setImportStatus(`Imported ${result.imported} conversation${result.imported !== 1 ? 's' : ''}`);
+      onRefresh?.();
+    } catch (err) {
+      setImportStatus(`Error: ${err instanceof Error ? err.message : 'Import failed'}`);
+    }
+    if (fileInputRef.current) fileInputRef.current.value = '';
+  };
+
   if (!open) return null;
 
   const handleSaveKey = async () => {
@@ -174,14 +186,28 @@ export function Settings({ open, onClose, onRefresh }: SettingsProps) {
                   onClick={async () => {
                     try {
                       const { content, filename } = await exportAll();
-                      const blob = new Blob([content], { type: 'application/json' });
-                      const url = URL.createObjectURL(blob);
-                      const a = document.createElement('a');
-                      a.href = url;
-                      a.download = filename;
-                      a.click();
-                      URL.revokeObjectURL(url);
-                    } catch { /* ignore */ }
+                      if (window.__TAURI_INTERNALS__) {
+                        const { save } = await import('@tauri-apps/plugin-dialog');
+                        const { writeTextFile } = await import('@tauri-apps/plugin-fs');
+                        const path = await save({ defaultPath: filename, filters: [{ name: 'JSON', extensions: ['json'] }] });
+                        if (path) {
+                          await writeTextFile(path, content);
+                          setImportStatus('Exported successfully');
+                        }
+                      } else {
+                        const blob = new Blob([content], { type: 'application/json' });
+                        const url = URL.createObjectURL(blob);
+                        const a = document.createElement('a');
+                        a.href = url;
+                        a.download = filename;
+                        document.body.appendChild(a);
+                        a.click();
+                        document.body.removeChild(a);
+                        URL.revokeObjectURL(url);
+                      }
+                    } catch (err) {
+                      setImportStatus(`Error: ${err instanceof Error ? err.message : 'Export failed'}`);
+                    }
                   }}
                   className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium cursor-pointer transition-all active:scale-[0.97]"
                   style={{ background: 'var(--bg-secondary)', color: 'var(--text-primary)', border: '1px solid var(--border-light)' }}
@@ -197,23 +223,36 @@ export function Settings({ open, onClose, onRefresh }: SettingsProps) {
                   type="file"
                   accept=".json"
                   className="hidden"
-                  onChange={async (e) => {
+                  onChange={(e) => {
                     const file = e.target.files?.[0];
                     if (!file) return;
-                    setImportStatus('Importing...');
-                    try {
-                      const result = await importConversations(file);
-                      setImportStatus(`Imported ${result.imported} conversation${result.imported !== 1 ? 's' : ''}`);
-                      onRefresh?.();
-                    } catch (err) {
-                      setImportStatus(`Error: ${err instanceof Error ? err.message : 'Import failed'}`);
-                    }
-                    if (fileInputRef.current) fileInputRef.current.value = '';
+                    doImport(file);
                   }}
                 />
                 <div className="flex items-center gap-3">
                   <button
-                    onClick={() => fileInputRef.current?.click()}
+                    onClick={async () => {
+                      if (window.__TAURI_INTERNALS__) {
+                        const { open } = await import('@tauri-apps/plugin-dialog');
+                        const { readTextFile } = await import('@tauri-apps/plugin-fs');
+                        const path = await open({ filters: [{ name: 'JSON', extensions: ['json'] }], multiple: false });
+                        if (path) {
+                          setImportStatus('Importing...');
+                          try {
+                            const content = await readTextFile(path as string);
+                            const blob = new Blob([content], { type: 'application/json' });
+                            const file = new File([blob], 'import.json', { type: 'application/json' });
+                            const result = await importConversations(file);
+                            setImportStatus(`Imported ${result.imported} conversation${result.imported !== 1 ? 's' : ''}`);
+                            onRefresh?.();
+                          } catch (err) {
+                            setImportStatus(`Error: ${err instanceof Error ? err.message : 'Import failed'}`);
+                          }
+                        }
+                      } else {
+                        fileInputRef.current?.click();
+                      }
+                    }}
                     className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium cursor-pointer transition-all active:scale-[0.97]"
                     style={{ background: 'var(--bg-secondary)', color: 'var(--text-primary)', border: '1px solid var(--border-light)' }}
                   >

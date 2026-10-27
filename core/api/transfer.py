@@ -103,7 +103,10 @@ async def import_conversations(request: Request, file: UploadFile = File(...)):
     pool = request.app.state.db_pool
     imported = 0
 
-    if data.get("format") == "kitsune":
+    if _is_claude_export(data):
+        imported = await _import_claude(data, pool)
+
+    elif isinstance(data, dict) and data.get("format") == "kitsune":
         convs = data.get("conversations", [])
         if not convs and data.get("conversation"):
             convs = [{"conversation": data["conversation"], "messages": data["messages"]}]
@@ -119,9 +122,6 @@ async def import_conversations(request: Request, file: UploadFile = File(...)):
                         answered_by=m.get("answered_by"),
                     )
                 imported += 1
-
-    elif _is_claude_export(data):
-        imported = await _import_claude(data, pool)
 
     else:
         return JSONResponse({"error": "Unrecognized export format"}, status_code=400)
