@@ -212,6 +212,10 @@ async def chat(req: ChatRequest, request: Request):
                 "INSERT OR REPLACE INTO context_snapshots (message_id, prompt_text, token_estimate) VALUES (?, ?, ?)",
                 (msg["id"], prompt_text, len(prompt_text) // 4),
             )
+            await db.execute(
+                "INSERT OR REPLACE INTO routing_decisions (message_id, chosen, reason) VALUES (?, ?, ?)",
+                (msg["id"], source, route_reason),
+            )
             await db.commit()
 
         yield {
@@ -241,6 +245,30 @@ async def cancel_stream(conversation_id: str):
         event.set()
         return {"ok": True, "status": "cancelling"}
     return {"ok": False, "status": "no_active_stream"}
+
+
+class FeedbackRequest(BaseModel):
+    feedback: str  # "up" or "down"
+
+
+@router.post("/chat/{message_id}/feedback")
+async def submit_feedback(message_id: str, req: FeedbackRequest, request: Request):
+    if req.feedback not in ("up", "down"):
+        return {"ok": False, "error": "feedback must be 'up' or 'down'"}
+    async with request.app.state.db_pool.acquire() as db:
+        row = await db.execute_fetchall(
+            "SELECT id FROM messages WHERE id = ?", (message_id,)
+        )
+        if not row:
+            return {"ok": False, "error": "message not found"}
+        await db.execute(
+            """INSERT INTO routing_decisions (message_id, chosen, reason, feedback)
+               VALUES (?, '', '', ?)
+               ON CONFLICT(message_id) DO UPDATE SET feedback = ?""",
+            (message_id, req.feedback, req.feedback),
+        )
+        await db.commit()
+    return {"ok": True}
 
 
 @router.get("/chat/{message_id}/context")
@@ -282,6 +310,10 @@ async def _pick_connector(mode: str, history: list[dict], conv: dict, http: http
 
     if not history:
         return local, "New conversation, starting local"
+
+    # Sticky escalation: once a chat has been escalated, stay on Claude
+    if conv.get("escalated") and claude_ready:
+        return claude, "Sticky escalation: continuing on Claude"
 
     last_msg = history[-1]["text"] if history else ""
     score, reason = _complexity_score(last_msg)
