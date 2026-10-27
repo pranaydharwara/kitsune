@@ -14,6 +14,7 @@ from core.connectors.claude_sdk import ClaudeSdkConnector
 from core.connectors.ollama import OllamaConnector
 from core.context.assembler import assemble
 from core.context.summary import maybe_update_summary
+from core.router.decide import decide as router_decide
 from core.store.conversations import create_conversation, get_conversation, update_conversation
 from core.store.messages import add_message, get_messages
 
@@ -296,13 +297,12 @@ async def _pick_connector(mode: str, history: list[dict], conv: dict, http: http
         else:
             return OllamaConnector(model=model_name, http=http), f"Model: {model_name}"
 
-    claude = _get_claude_connector()
     local = await _get_local_connector(http)
     claude_ready = _is_claude_available()
 
     if mode == "cloud":
         if claude_ready:
-            return claude, "User selected Cloud mode"
+            return _get_claude_connector(), "User selected Cloud mode"
         return local, "Cloud requested but claude CLI unavailable, falling back to local"
 
     if mode == "local":
@@ -311,74 +311,27 @@ async def _pick_connector(mode: str, history: list[dict], conv: dict, http: http
     if not history:
         return local, "New conversation, starting local"
 
-    # Sticky escalation: once a chat has been escalated, stay on Claude
-    if conv.get("escalated") and claude_ready:
-        return claude, "Sticky escalation: continuing on Claude"
-
     last_msg = history[-1]["text"] if history else ""
-    score, reason = _complexity_score(last_msg)
+    decision = await router_decide(last_msg, history, conv, claude_ready)
 
-    if score >= 3 and claude_ready:
-        return claude, f"Auto-escalated: {reason}"
+    if decision["target"] == "cloud" and claude_ready:
+        hint = decision.get("model_hint")
+        if hint == "opus":
+            connector = _get_claude_connector_for_model("opus")
+        else:
+            connector = _get_claude_connector()
+        return connector, decision["reason"]
 
-    return local, f"Auto: handled locally (complexity {score})"
+    return local, decision["reason"]
 
 
-def _complexity_score(text: str) -> tuple[int, str]:
-    score = 0
-    reasons = []
-
-    if len(text) > 2000:
-        score += 2
-        reasons.append("long message")
-    elif len(text) > 800:
-        score += 1
-        reasons.append("medium length")
-
-    if text.count("```") >= 2:
-        score += 2
-        reasons.append("code blocks")
-    elif text.count("`") >= 4:
-        score += 1
-        reasons.append("inline code")
-
-    steps = sum(1 for line in text.split("\n") if line.strip()[:2] in ("1.", "2.", "3.", "4.", "5.", "6.", "7.", "8.", "9.", "- ", "* "))
-    if steps >= 4:
-        score += 2
-        reasons.append(f"{steps} steps")
-    elif steps >= 2:
-        score += 1
-        reasons.append(f"{steps} steps")
-
-    strong_keywords = [
-        "review this pr", "code review", "security audit", "explain this codebase",
-        "write a spec", "detailed analysis", "pros and cons", "trade-offs",
-    ]
-    medium_keywords = [
-        "architecture", "refactor", "design pattern", "compare", "analyze",
-        "in depth", "in detail", "comprehensive", "step by step",
-        "explain", "how does", "how do", "why does", "why do",
-    ]
-    lower = text.lower()
-    for kw in strong_keywords:
-        if kw in lower:
-            score += 3
-            reasons.append(f"'{kw}'")
-            break
-    else:
-        matched = [kw for kw in medium_keywords if kw in lower]
-        if len(matched) >= 2:
-            score += 3
-            reasons.append(f"multiple: {', '.join(matched[:3])}")
-        elif matched:
-            score += 2
-            reasons.append(f"'{matched[0]}'")
-
-    if len(text.split()) > 50 and ("?" in text) and text.count("?") >= 3:
-        score += 1
-        reasons.append("multi-question")
-
-    return score, ", ".join(reasons) if reasons else "simple"
+def _get_claude_connector_for_model(hint: str) -> ClaudeSdkConnector | ClaudeCliConnector:
+    if hint == "opus":
+        sdk = ClaudeSdkConnector(model="claude-opus-4-6-20250514")
+        if sdk.available().value == "ready":
+            return sdk
+        return ClaudeCliConnector(model="opus")
+    return _get_claude_connector()
 
 
 def _build_local_messages(history: list[dict]) -> list[dict]:
