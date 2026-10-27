@@ -15,8 +15,10 @@ from core.connectors.ollama import OllamaConnector
 from core.context.assembler import assemble
 from core.context.summary import maybe_update_summary
 from core.router.decide import decide as router_decide
+from core.context.project import build_project_context
 from core.store.conversations import create_conversation, get_conversation, update_conversation
 from core.store.messages import add_message, get_messages
+from core.store.projects import get_project
 
 router = APIRouter(prefix="/api")
 
@@ -124,16 +126,27 @@ async def chat(req: ChatRequest, request: Request):
         mode = req.retry_with or req.mode
         connector, route_reason = await _pick_connector(mode, history, conv, http, model=req.model)
 
+        project_context = None
+        pid = conv.get("project_id")
+        if pid:
+            proj = await get_project(db, pid)
+            if proj:
+                project_context = build_project_context(proj["path"])
+
         is_claude = isinstance(connector, (ClaudeSdkConnector, ClaudeCliConnector))
         if is_claude:
             summary = conv.get("summary")
             system, prompt_text = assemble(history, summary=summary)
+            if project_context:
+                system += f"\n\n## Project context\nThe user is working in the following project:\n{project_context}"
             await update_conversation(db, conv["id"], escalated=True)
             messages = None
         else:
             messages = _build_local_messages(history)
             prompt_text = messages[-1]["content"] if messages else ""
             system = LOCAL_SYSTEM
+            if project_context:
+                system += f"\n\nYou have context about the user's current project:\n{project_context}"
 
     conv_id = conv["id"]
     cancel_event = asyncio.Event()
