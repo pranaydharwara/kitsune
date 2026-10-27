@@ -28,10 +28,13 @@ fn start_backend(repo: &std::path::Path) -> Option<Child> {
 
     let child = Command::new(&venv_python)
         .args([
-            "-m", "uvicorn",
+            "-O", "-m", "uvicorn",
             "core.main:app",
             "--host", "127.0.0.1",
             "--port", "9848",
+            "--loop", "uvloop",
+            "--no-access-log",
+            "--log-level", "warning",
         ])
         .current_dir(repo)
         .stdout(std::process::Stdio::null())

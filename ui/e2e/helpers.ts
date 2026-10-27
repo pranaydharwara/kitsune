@@ -6,9 +6,9 @@ const MOCK_MODELS = {
     { id: 'local:llama3:8b', name: 'llama3:8b', provider: 'local', size: '4.7GB' },
   ],
   cloud: [
-    { id: 'claude:claude-sonnet-5-5', name: 'Sonnet 5.5', provider: 'claude', family: 'Claude 5' },
-    { id: 'claude:claude-opus-5-5', name: 'Opus 5.5', provider: 'claude', family: 'Claude 5' },
-    { id: 'claude:claude-opus-4-6', name: 'Opus 4.6', provider: 'claude', family: 'Claude 4' },
+    { id: 'claude:claude-sonnet-5-5-20250514', name: 'Sonnet 5.5', provider: 'claude', family: 'Claude 5' },
+    { id: 'claude:claude-opus-5-5-20250514', name: 'Opus 5.5', provider: 'claude', family: 'Claude 5' },
+    { id: 'claude:claude-opus-4-6-20250514', name: 'Opus 4.6', provider: 'claude', family: 'Claude 4' },
     { id: 'claude:claude-haiku-3-5-20241022', name: 'Haiku 3.5', provider: 'claude', family: 'Claude 3.5' },
   ],
 };

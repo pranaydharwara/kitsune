@@ -10,6 +10,7 @@ from sse_starlette.sse import EventSourceResponse
 from core.config import CLAUDE_MODELS, MAIN_MODEL, OLLAMA_BASE_URL
 from core.connectors.base import Prompt
 from core.connectors.claude_cli import ClaudeCliConnector
+from core.connectors.claude_sdk import ClaudeSdkConnector
 from core.connectors.ollama import OllamaConnector
 from core.context.assembler import assemble
 from core.context.summary import maybe_update_summary
@@ -49,7 +50,7 @@ def _is_claude_available() -> bool:
     now = time.monotonic()
     if now - _claude_available["ts"] < CLAUDE_CACHE_TTL:
         return _claude_available["ready"]
-    ready = ClaudeCliConnector().available().value == "ready"
+    ready = ClaudeSdkConnector().available().value == "ready" or ClaudeCliConnector().available().value == "ready"
     _claude_available["ready"] = ready
     _claude_available["ts"] = now
     return ready
@@ -64,7 +65,10 @@ async def _get_local_connector(http: httpx.AsyncClient) -> OllamaConnector:
     return OllamaConnector(model=available[0], http=http)
 
 
-def _get_claude_connector() -> ClaudeCliConnector:
+def _get_claude_connector() -> ClaudeSdkConnector | ClaudeCliConnector:
+    sdk = ClaudeSdkConnector()
+    if sdk.available().value == "ready":
+        return sdk
     return ClaudeCliConnector(model="sonnet")
 
 
@@ -93,7 +97,7 @@ async def list_models(request: Request):
     cloud = []
     if _is_claude_available():
         for cm in CLAUDE_MODELS:
-            cloud.append({"id": f"claude:{cm['cli']}", "name": cm["name"], "provider": "claude", "family": cm["family"]})
+            cloud.append({"id": f"claude:{cm['api']}", "name": cm["name"], "provider": "claude", "family": cm["family"]})
 
     return {"local": local, "cloud": cloud}
 
@@ -118,7 +122,8 @@ async def chat(req: ChatRequest, request: Request):
         mode = req.retry_with or req.mode
         connector, route_reason = await _pick_connector(mode, history, conv, http, model=req.model)
 
-        if isinstance(connector, ClaudeCliConnector):
+        is_claude = isinstance(connector, (ClaudeSdkConnector, ClaudeCliConnector))
+        if is_claude:
             summary = conv.get("summary")
             system, prompt_text = assemble(history, summary=summary)
             await update_conversation(db, conv["id"], escalated=True)
@@ -135,7 +140,7 @@ async def chat(req: ChatRequest, request: Request):
     async def event_stream():
         full_text = ""
         start = time.monotonic()
-        source = f"claude:{connector.model}" if isinstance(connector, ClaudeCliConnector) else f"local:{connector.model}"
+        source = f"claude:{connector.model}" if isinstance(connector, (ClaudeSdkConnector, ClaudeCliConnector)) else f"local:{connector.model}"
 
         yield {
             "event": "route",
@@ -237,7 +242,10 @@ async def _pick_connector(mode: str, history: list[dict], conv: dict, http: http
     if model:
         provider, model_name = model.split(":", 1)
         if provider == "claude":
-            return ClaudeCliConnector(model=model_name), f"Model: Claude {model_name}"
+            sdk = ClaudeSdkConnector(model=model_name)
+            if sdk.available().value == "ready":
+                return sdk, f"Model: Claude {model_name}"
+            return ClaudeCliConnector(model=model_name), f"Model: Claude {model_name} (CLI)"
         else:
             return OllamaConnector(model=model_name, http=http), f"Model: {model_name}"
 

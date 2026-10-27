@@ -60,11 +60,6 @@ CREATE TABLE IF NOT EXISTS prs (
     PRIMARY KEY (repo, number)
 );
 
-CREATE VIRTUAL TABLE IF NOT EXISTS prs_fts USING fts5(
-    repo, number, title, branch, author, body,
-    content='prs', content_rowid='rowid'
-);
-
 CREATE TABLE IF NOT EXISTS chat_pr_links (
     conversation_id TEXT NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
     repo TEXT NOT NULL,
@@ -74,10 +69,6 @@ CREATE TABLE IF NOT EXISTS chat_pr_links (
     PRIMARY KEY (conversation_id, repo, pr_number)
 );
 
-CREATE VIRTUAL TABLE IF NOT EXISTS conversations_fts USING fts5(
-    title,
-    content='conversations', content_rowid='rowid'
-);
 """
 
 
@@ -97,6 +88,9 @@ class DBPool:
             self._connections.append(db)
             await self._available.put(db)
         await self._connections[0].executescript(SCHEMA)
+        await self._connections[0].executescript(
+            "DROP TABLE IF EXISTS prs_fts; DROP TABLE IF EXISTS conversations_fts;"
+        )
 
     @asynccontextmanager
     async def acquire(self):
