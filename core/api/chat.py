@@ -350,18 +350,29 @@ def _complexity_score(text: str) -> tuple[int, str]:
         score += 1
         reasons.append(f"{steps} steps")
 
-    escalation_keywords = [
-        "review this pr", "code review", "architecture", "security audit",
-        "refactor", "design pattern", "explain this codebase", "write a spec",
-        "compare", "analyze", "pros and cons", "trade-offs", "in depth",
-        "comprehensive", "detailed analysis", "step by step",
+    strong_keywords = [
+        "review this pr", "code review", "security audit", "explain this codebase",
+        "write a spec", "detailed analysis", "pros and cons", "trade-offs",
+    ]
+    medium_keywords = [
+        "architecture", "refactor", "design pattern", "compare", "analyze",
+        "in depth", "in detail", "comprehensive", "step by step",
+        "explain", "how does", "how do", "why does", "why do",
     ]
     lower = text.lower()
-    for kw in escalation_keywords:
+    for kw in strong_keywords:
         if kw in lower:
-            score += 2
+            score += 3
             reasons.append(f"'{kw}'")
             break
+    else:
+        matched = [kw for kw in medium_keywords if kw in lower]
+        if len(matched) >= 2:
+            score += 3
+            reasons.append(f"multiple: {', '.join(matched[:3])}")
+        elif matched:
+            score += 2
+            reasons.append(f"'{matched[0]}'")
 
     if len(text.split()) > 50 and ("?" in text) and text.count("?") >= 3:
         score += 1
