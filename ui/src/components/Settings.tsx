@@ -1,20 +1,23 @@
-import { useEffect, useState } from 'react';
-import { X, Eye, EyeOff, Trash2 } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
+import { X, Eye, EyeOff, Trash2, Download, Upload } from 'lucide-react';
 import type { Settings as SettingsType, UsageStats } from '../lib/api';
-import { getSettings, updateSettings, clearApiKey, getUsage } from '../lib/api';
+import { getSettings, updateSettings, clearApiKey, getUsage, exportAll, importConversations } from '../lib/api';
 
 interface SettingsProps {
   open: boolean;
   onClose: () => void;
+  onRefresh?: () => void;
 }
 
-export function Settings({ open, onClose }: SettingsProps) {
+export function Settings({ open, onClose, onRefresh }: SettingsProps) {
   const [settings, setSettings] = useState<SettingsType | null>(null);
   const [usage, setUsage] = useState<UsageStats | null>(null);
   const [apiKey, setApiKey] = useState('');
   const [showKey, setShowKey] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [tab, setTab] = useState<'general' | 'usage'>('general');
+  const [tab, setTab] = useState<'general' | 'usage' | 'data'>('general');
+  const [importStatus, setImportStatus] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (open) {
@@ -63,7 +66,7 @@ export function Settings({ open, onClose }: SettingsProps) {
         </div>
 
         <div className="flex gap-1 px-6 pt-3">
-          {(['general', 'usage'] as const).map((t) => (
+          {(['general', 'usage', 'data'] as const).map((t) => (
             <button
               key={t}
               onClick={() => setTab(t)}
@@ -74,7 +77,7 @@ export function Settings({ open, onClose }: SettingsProps) {
                 border: tab === t ? '1px solid var(--border-light)' : '1px solid transparent',
               }}
             >
-              {t === 'general' ? 'General' : 'Usage'}
+              {t === 'general' ? 'General' : t === 'usage' ? 'Usage' : 'Data'}
             </button>
           ))}
         </div>
@@ -160,6 +163,82 @@ export function Settings({ open, onClose }: SettingsProps) {
                 <StatCard label="Tokens In" value={formatNumber(usage.total_tokens_in)} />
                 <StatCard label="Tokens Out" value={formatNumber(usage.total_tokens_out)} />
                 <StatCard label="Estimated Cost" value={`$${usage.total_cost?.toFixed(4) || '0.00'}`} />
+              </div>
+            </div>
+          )}
+
+          {tab === 'data' && (
+            <div className="space-y-6">
+              <Section title="Export" description="Download all your conversations as a JSON file.">
+                <button
+                  onClick={async () => {
+                    try {
+                      const { content, filename } = await exportAll();
+                      const blob = new Blob([content], { type: 'application/json' });
+                      const url = URL.createObjectURL(blob);
+                      const a = document.createElement('a');
+                      a.href = url;
+                      a.download = filename;
+                      a.click();
+                      URL.revokeObjectURL(url);
+                    } catch { /* ignore */ }
+                  }}
+                  className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium cursor-pointer transition-all active:scale-[0.97]"
+                  style={{ background: 'var(--bg-secondary)', color: 'var(--text-primary)', border: '1px solid var(--border-light)' }}
+                >
+                  <Download size={14} />
+                  Export all conversations
+                </button>
+              </Section>
+
+              <Section title="Import" description="Import conversations from a Kitsune export or a Claude.ai export (JSON).">
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept=".json"
+                  className="hidden"
+                  onChange={async (e) => {
+                    const file = e.target.files?.[0];
+                    if (!file) return;
+                    setImportStatus('Importing...');
+                    try {
+                      const result = await importConversations(file);
+                      setImportStatus(`Imported ${result.imported} conversation${result.imported !== 1 ? 's' : ''}`);
+                      onRefresh?.();
+                    } catch (err) {
+                      setImportStatus(`Error: ${err instanceof Error ? err.message : 'Import failed'}`);
+                    }
+                    if (fileInputRef.current) fileInputRef.current.value = '';
+                  }}
+                />
+                <div className="flex items-center gap-3">
+                  <button
+                    onClick={() => fileInputRef.current?.click()}
+                    className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium cursor-pointer transition-all active:scale-[0.97]"
+                    style={{ background: 'var(--bg-secondary)', color: 'var(--text-primary)', border: '1px solid var(--border-light)' }}
+                  >
+                    <Upload size={14} />
+                    Choose JSON file
+                  </button>
+                  {importStatus && (
+                    <span className="text-xs" style={{ color: importStatus.startsWith('Error') ? '#d63031' : 'var(--text-muted)' }}>
+                      {importStatus}
+                    </span>
+                  )}
+                </div>
+              </Section>
+
+              <div
+                className="px-4 py-3 rounded-xl text-xs"
+                style={{ background: 'var(--bg-secondary)', color: 'var(--text-muted)', border: '1px solid var(--border-light)' }}
+              >
+                <strong style={{ color: 'var(--text-secondary)' }}>Importing from Claude.ai</strong>
+                <ol className="mt-2 space-y-1 list-decimal list-inside">
+                  <li>Go to claude.ai/settings</li>
+                  <li>Click "Export Data" and download your archive</li>
+                  <li>Unzip and find <code style={{ color: 'var(--text-secondary)' }}>conversations.json</code></li>
+                  <li>Use the import button above to load it</li>
+                </ol>
               </div>
             </div>
           )}

@@ -132,9 +132,25 @@ export async function getUsage(): Promise<UsageStats> {
   return res.json();
 }
 
-export async function exportConversation(conversationId: string): Promise<string> {
-  const msgs = await getMessages(conversationId);
-  return msgs.map((m) => `## ${m.role === 'user' ? 'You' : 'Kitsune'}\n\n${m.text}`).join('\n\n---\n\n');
+export async function exportConversation(conversationId: string, format: 'json' | 'markdown' = 'json'): Promise<{ content: string; filename: string }> {
+  const res = await fetch(`${BASE}/conversations/${conversationId}/export?format=${format}`);
+  return res.json();
+}
+
+export async function exportAll(): Promise<{ content: string; filename: string }> {
+  const res = await fetch(`${BASE}/conversations/export-all`);
+  return res.json();
+}
+
+export async function importConversations(file: File): Promise<{ imported: number }> {
+  const form = new FormData();
+  form.append('file', file);
+  const res = await fetch(`${BASE}/conversations/import`, { method: 'POST', body: form });
+  if (!res.ok) {
+    const err = await res.json();
+    throw new Error(err.error || 'Import failed');
+  }
+  return res.json();
 }
 
 export function streamChat(
