@@ -210,7 +210,7 @@ export default function App() {
           models={models}
         />
       </main>
-      <Settings open={settingsOpen} onClose={() => setSettingsOpen(false)} />
+      <Settings open={settingsOpen} onClose={() => setSettingsOpen(false)} onRefresh={refreshConversations} />
     </div>
   );
 }

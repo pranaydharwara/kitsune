@@ -10,6 +10,7 @@ from fastapi.staticfiles import StaticFiles
 from core.api.chat import router as chat_router
 from core.api.conversations import router as conversations_router
 from core.api.settings import router as settings_router
+from core.api.transfer import router as transfer_router
 from core.config import DEFAULT_PORT, MAIN_MODEL, OLLAMA_BASE_URL
 from core.store.db import DBPool
 
@@ -45,6 +46,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 app.include_router(chat_router)
+app.include_router(transfer_router)
 app.include_router(conversations_router)
 app.include_router(settings_router)
 
