@@ -60,6 +60,14 @@ export async function cancelStream(conversationId: string): Promise<void> {
   await fetch(`${BASE}/chat/${conversationId}/cancel`, { method: 'POST' });
 }
 
+export async function submitFeedback(messageId: string, feedback: 'up' | 'down'): Promise<void> {
+  await fetch(`${BASE}/chat/${messageId}/feedback`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ feedback }),
+  });
+}
+
 export interface LocalModel {
   id: string;
   name: string;

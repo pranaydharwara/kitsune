@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
-import { Check, Copy } from 'lucide-react';
+import { Check, Copy, ThumbsUp, ThumbsDown } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import type { Message, RouteInfo } from '../lib/api';
-import { getContextSnapshot } from '../lib/api';
+import { getContextSnapshot, submitFeedback } from '../lib/api';
 
 interface ChatThreadProps {
   messages: Message[];
@@ -169,6 +169,7 @@ function MessageBubble({ message, onRetry }: { message: Message; onRetry: (id: s
             {formatModelBadge(message.answered_by, message.latency_ms, message.tokens_in, message.tokens_out)}
           </span>
           <CopyButton text={message.text} />
+          <FeedbackButtons messageId={message.id} />
           {isLocal && (
             <button
               onClick={() => onRetry(message.id, 'cloud')}
@@ -229,6 +230,39 @@ function InspectorLink({ messageId }: { messageId: string }) {
         </div>
       )}
     </>
+  );
+}
+
+function FeedbackButtons({ messageId }: { messageId: string }) {
+  const [feedback, setFeedback] = useState<'up' | 'down' | null>(null);
+
+  const handleFeedback = async (value: 'up' | 'down') => {
+    const next = feedback === value ? null : value;
+    setFeedback(next);
+    if (next) {
+      await submitFeedback(messageId, next);
+    }
+  };
+
+  return (
+    <span className="inline-flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+      <button
+        onClick={() => handleFeedback('up')}
+        className="p-1 rounded-md cursor-pointer transition-all active:scale-[0.9]"
+        style={{ color: feedback === 'up' ? 'var(--accent)' : 'var(--text-muted)' }}
+        title="Good response"
+      >
+        <ThumbsUp size={13} />
+      </button>
+      <button
+        onClick={() => handleFeedback('down')}
+        className="p-1 rounded-md cursor-pointer transition-all active:scale-[0.9]"
+        style={{ color: feedback === 'down' ? '#d63031' : 'var(--text-muted)' }}
+        title="Bad response"
+      >
+        <ThumbsDown size={13} />
+      </button>
+    </span>
   );
 }
 

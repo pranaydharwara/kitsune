@@ -212,6 +212,10 @@ async def chat(req: ChatRequest, request: Request):
                 "INSERT OR REPLACE INTO context_snapshots (message_id, prompt_text, token_estimate) VALUES (?, ?, ?)",
                 (msg["id"], prompt_text, len(prompt_text) // 4),
             )
+            await db.execute(
+                "INSERT OR REPLACE INTO routing_decisions (message_id, chosen, reason) VALUES (?, ?, ?)",
+                (msg["id"], source, route_reason),
+            )
             await db.commit()
 
         yield {
@@ -241,6 +245,30 @@ async def cancel_stream(conversation_id: str):
         event.set()
         return {"ok": True, "status": "cancelling"}
     return {"ok": False, "status": "no_active_stream"}
+
+
+class FeedbackRequest(BaseModel):
+    feedback: str  # "up" or "down"
+
+
+@router.post("/chat/{message_id}/feedback")
+async def submit_feedback(message_id: str, req: FeedbackRequest, request: Request):
+    if req.feedback not in ("up", "down"):
+        return {"ok": False, "error": "feedback must be 'up' or 'down'"}
+    async with request.app.state.db_pool.acquire() as db:
+        row = await db.execute_fetchall(
+            "SELECT id FROM messages WHERE id = ?", (message_id,)
+        )
+        if not row:
+            return {"ok": False, "error": "message not found"}
+        await db.execute(
+            """INSERT INTO routing_decisions (message_id, chosen, reason, feedback)
+               VALUES (?, '', '', ?)
+               ON CONFLICT(message_id) DO UPDATE SET feedback = ?""",
+            (message_id, req.feedback, req.feedback),
+        )
+        await db.commit()
+    return {"ok": True}
 
 
 @router.get("/chat/{message_id}/context")
@@ -283,6 +311,10 @@ async def _pick_connector(mode: str, history: list[dict], conv: dict, http: http
     if not history:
         return local, "New conversation, starting local"
 
+    # Sticky escalation: once a chat has been escalated, stay on Claude
+    if conv.get("escalated") and claude_ready:
+        return claude, "Sticky escalation: continuing on Claude"
+
     last_msg = history[-1]["text"] if history else ""
     score, reason = _complexity_score(last_msg)
 
@@ -318,18 +350,29 @@ def _complexity_score(text: str) -> tuple[int, str]:
         score += 1
         reasons.append(f"{steps} steps")
 
-    escalation_keywords = [
-        "review this pr", "code review", "architecture", "security audit",
-        "refactor", "design pattern", "explain this codebase", "write a spec",
-        "compare", "analyze", "pros and cons", "trade-offs", "in depth",
-        "comprehensive", "detailed analysis", "step by step",
+    strong_keywords = [
+        "review this pr", "code review", "security audit", "explain this codebase",
+        "write a spec", "detailed analysis", "pros and cons", "trade-offs",
+    ]
+    medium_keywords = [
+        "architecture", "refactor", "design pattern", "compare", "analyze",
+        "in depth", "in detail", "comprehensive", "step by step",
+        "explain", "how does", "how do", "why does", "why do",
     ]
     lower = text.lower()
-    for kw in escalation_keywords:
+    for kw in strong_keywords:
         if kw in lower:
-            score += 2
+            score += 3
             reasons.append(f"'{kw}'")
             break
+    else:
+        matched = [kw for kw in medium_keywords if kw in lower]
+        if len(matched) >= 2:
+            score += 3
+            reasons.append(f"multiple: {', '.join(matched[:3])}")
+        elif matched:
+            score += 2
+            reasons.append(f"'{matched[0]}'")
 
     if len(text.split()) > 50 and ("?" in text) and text.count("?") >= 3:
         score += 1
