@@ -137,11 +137,13 @@ async def chat(req: ChatRequest, request: Request):
                 project_context = build_project_context(proj["path"])
 
         is_claude = isinstance(connector, (ClaudeSdkConnector, ClaudeCliConnector))
+        claude_tool_msgs = None
         if is_claude:
             summary = conv.get("summary")
             system, prompt_text = assemble(history, summary=summary)
             if project_context:
                 system += f"\n\n## Project context\nThe user is working in the following project:\n{project_context}"
+            claude_tool_msgs = [{"role": m["role"], "content": m["text"]} for m in history]
             await update_conversation(db, conv["id"], escalated=True)
             messages = None
         else:
@@ -156,7 +158,7 @@ async def chat(req: ChatRequest, request: Request):
     _active_streams[conv_id] = cancel_event
 
     project_path_for_tools = None
-    if project_context and not is_claude:
+    if project_context:
         async with pool.acquire() as db:
             pid = conv.get("project_id")
             if pid:
@@ -178,6 +180,15 @@ async def chat(req: ChatRequest, request: Request):
         try:
             if project_path_for_tools and isinstance(connector, OllamaConnector):
                 async for event in _tool_loop(connector, messages, system, project_path_for_tools, cancel_event):
+                    if event["event"] == "token":
+                        data = json.loads(event["data"])
+                        full_text += data.get("text", "")
+                    yield event
+                    if cancel_event.is_set():
+                        cancelled = True
+                        break
+            elif project_path_for_tools and isinstance(connector, ClaudeSdkConnector):
+                async for event in _claude_tool_loop(connector, claude_tool_msgs, system, project_path_for_tools, cancel_event):
                     if event["event"] == "token":
                         data = json.loads(event["data"])
                         full_text += data.get("text", "")
@@ -405,33 +416,51 @@ def _handle_text_tool_calls(text: str, project_path: str | None) -> list[dict]:
                 "data": json.dumps({"tool": tool_name, "arguments": arguments, "status": "done", "result": result}),
             })
 
-            if result.get("error"):
-                summary = f"Failed to {tool_name}: {result['error']}"
-            elif tool_name == "create_file":
-                summary = f"Created `{arguments.get('path', '?')}` ({result.get('size', 0)} bytes)"
-            elif tool_name == "run_command":
-                output = result.get("output", "").strip()
-                code = result.get("exit_code", 0)
-                preview = output[:200] + ("..." if len(output) > 200 else "")
-                summary = f"Ran `{arguments.get('command', '?')}`"
-                if code != 0:
-                    summary += f" (exit {code})"
-                if preview:
-                    summary += f"\n```\n{preview}\n```"
-            elif tool_name == "read_file":
-                summary = f"Read `{arguments.get('path', '?')}` ({result.get('size', 0)} chars)"
-            elif tool_name == "list_files":
-                entries = result.get("entries", [])
-                summary = f"Listed `{arguments.get('path', '.')}` ({len(entries)} entries)"
-            else:
-                summary = f"Used {tool_name}"
-
-            events.append({"event": "token", "data": json.dumps({"text": "\n" + summary + "\n", "done": False})})
+            summary = _tool_summary(tool_name, arguments, result)
+            events.append({"event": "token", "data": json.dumps({"text": "\n\n" + summary + "\n\n", "done": False})})
         else:
             summary = f"Tried to use `{tool_name}` but no project context available."
-            events.append({"event": "token", "data": json.dumps({"text": "\n" + summary + "\n", "done": False})})
+            events.append({"event": "token", "data": json.dumps({"text": "\n\n" + summary + "\n\n", "done": False})})
 
     return events
+
+
+def _tool_summary(tool_name: str, arguments: dict, result: dict) -> str:
+    """Build a human-readable summary of a tool execution."""
+    if result.get("error"):
+        return f"**{tool_name} failed:** {result['error']}"
+
+    if tool_name == "create_file":
+        path = arguments.get("path", "?")
+        size = result.get("size", 0)
+        return f"**Created** `{path}` ({size} bytes)"
+
+    if tool_name == "run_command":
+        cmd = arguments.get("command", "?")
+        output = result.get("output", "").strip()
+        code = result.get("exit_code", 0)
+        parts = [f"**Ran** `{cmd}`"]
+        if code != 0:
+            parts[0] += f" — exit code {code}"
+        if output:
+            preview = output[:500] + ("..." if len(output) > 500 else "")
+            parts.append(f"\n```\n{preview}\n```")
+        return "".join(parts)
+
+    if tool_name == "read_file":
+        path = arguments.get("path", "?")
+        size = result.get("size", 0)
+        return f"**Read** `{path}` ({size} chars)"
+
+    if tool_name == "list_files":
+        path = arguments.get("path", ".")
+        entries = result.get("entries", [])
+        listing = "\n".join(entries[:30])
+        if len(entries) > 30:
+            listing += f"\n... ({len(entries)} total)"
+        return f"**Listed** `{path}`\n```\n{listing}\n```"
+
+    return f"**Used** {tool_name}"
 
 
 async def _tool_loop(connector, chat_messages: list[dict] | None, system: str, project_path: str, cancel_event) -> AsyncIterator:
@@ -515,6 +544,75 @@ async def _tool_loop(connector, chat_messages: list[dict] | None, system: str, p
         clean = _strip_tool_tags(buf)
         if clean:
             yield {"event": "token", "data": json.dumps({"text": clean, "done": True})}
+
+
+async def _claude_tool_loop(connector: ClaudeSdkConnector, chat_messages: list[dict], system: str, project_path: str, cancel_event) -> AsyncIterator:
+    """Tool-call loop for Claude SDK using native Anthropic tool use."""
+    msgs = list(chat_messages)
+    tool_system = system + TOOL_SYSTEM_SUFFIX
+
+    for _round in range(MAX_TOOL_ROUNDS):
+        if cancel_event.is_set():
+            return
+
+        response = await connector.chat_with_tools(msgs, TOOL_SCHEMAS, system=tool_system)
+        tool_calls = response.get("tool_calls")
+        content = response.get("content", "")
+
+        if content and not tool_calls:
+            yield {"event": "token", "data": json.dumps({"text": content, "done": True})}
+            return
+
+        if content:
+            yield {"event": "token", "data": json.dumps({"text": content, "done": False})}
+
+        if not tool_calls:
+            return
+
+        # Build assistant message with content blocks for Claude API
+        assistant_content = []
+        if content:
+            assistant_content.append({"type": "text", "text": content})
+        for tc in tool_calls:
+            fn = tc.get("function", {})
+            assistant_content.append({
+                "type": "tool_use",
+                "id": tc.get("id", f"tool_{_round}"),
+                "name": fn.get("name", ""),
+                "input": fn.get("arguments", {}),
+            })
+        msgs.append({"role": "assistant", "content": assistant_content})
+
+        # Execute tools and build tool_result message
+        tool_results = []
+        for tc in tool_calls:
+            fn = tc.get("function", {})
+            tool_name = fn.get("name", "")
+            arguments = fn.get("arguments", {})
+
+            yield {
+                "event": "tool_use",
+                "data": json.dumps({"tool": tool_name, "arguments": arguments, "status": "running"}),
+            }
+
+            result = execute_tool(tool_name, arguments, project_path)
+
+            yield {
+                "event": "tool_use",
+                "data": json.dumps({"tool": tool_name, "arguments": arguments, "status": "done", "result": result}),
+            }
+
+            tool_results.append({
+                "type": "tool_result",
+                "tool_use_id": tc.get("id", f"tool_{_round}"),
+                "content": json.dumps(result),
+            })
+
+        msgs.append({"role": "user", "content": tool_results})
+
+    # Final streaming response
+    async for chunk in connector.stream_after_tools(msgs, system=tool_system):
+        yield {"event": "token", "data": json.dumps({"text": chunk.text, "done": chunk.done})}
 
 
 async def _pick_connector(mode: str, history: list[dict], conv: dict, http: httpx.AsyncClient, model: str | None = None):
