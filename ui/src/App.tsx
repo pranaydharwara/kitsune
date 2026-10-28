@@ -3,6 +3,7 @@ import { ChatThread } from './components/ChatThread';
 import { Composer } from './components/Composer';
 import { Settings } from './components/Settings';
 import { Sidebar } from './components/Sidebar';
+import { ToolActivity } from './components/ToolActivity';
 import type { Conversation, Message, ModelsResponse, Project, RouteInfo, ToolUseEvent } from './lib/api';
 import {
   cancelStream,
@@ -33,6 +34,7 @@ export default function App() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [speed, setSpeed] = useState<number | null>(null);
   const [toolEvents, setToolEvents] = useState<ToolUseEvent[]>([]);
+  const [toolPanelOpen, setToolPanelOpen] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
 
   const refreshConversations = useCallback(async () => {
@@ -137,6 +139,7 @@ export default function App() {
     setIsStreaming(true);
     setSpeed(null);
     setToolEvents([]);
+    setToolPanelOpen(false);
 
     const controller = streamChat(text, activeId, {
       onToken: (token) => {
@@ -146,11 +149,20 @@ export default function App() {
         setRouteInfo(route);
       },
       onToolUse: (event) => {
+        if (event.status === 'running') {
+          setToolPanelOpen(true);
+        }
         setToolEvents((prev) => {
           if (event.status === 'done') {
-            return prev.map((e) =>
-              e.tool === event.tool && e.status === 'running' ? event : e,
+            const idx = prev.findLastIndex(
+              (e) => e.tool === event.tool && e.status === 'running'
+                && JSON.stringify(e.arguments) === JSON.stringify(event.arguments),
             );
+            if (idx >= 0) {
+              const next = [...prev];
+              next[idx] = event;
+              return next;
+            }
           }
           return [...prev, event];
         });
@@ -158,7 +170,6 @@ export default function App() {
       onDone: async (data) => {
         setIsStreaming(false);
         setStreamingText('');
-        setToolEvents([]);
         if (!activeId) {
           setActiveId(data.conversation_id);
           if (activeProjectId) {
@@ -174,13 +185,11 @@ export default function App() {
       onError: (err) => {
         setIsStreaming(false);
         setStreamingText('');
-        setToolEvents([]);
         setError(err);
       },
       onCancelled: () => {
         setIsStreaming(false);
         setStreamingText('');
-        setToolEvents([]);
         if (activeId) {
           getMessages(activeId).then(setMessages).catch(() => {});
         }
@@ -309,6 +318,7 @@ export default function App() {
           models={models}
         />
       </main>
+      <ToolActivity events={toolEvents} open={toolPanelOpen} onClose={() => setToolPanelOpen(false)} />
       <Settings open={settingsOpen} onClose={() => setSettingsOpen(false)} onRefresh={refreshConversations} />
     </div>
   );
