@@ -186,15 +186,40 @@ async def chat(req: ChatRequest, request: Request):
                         cancelled = True
                         break
             else:
+                buf = ""
                 async for chunk in connector.stream(Prompt(text=prompt_text, system=system, messages=messages)):
                     if cancel_event.is_set():
                         cancelled = True
                         break
-                    full_text += chunk.text
+                    buf += chunk.text
+
+                    if _TOOL_TAG_OPEN in buf and _TOOL_TAG_CLOSE not in buf:
+                        continue
+
+                    if _TOOL_TAG_CLOSE in buf:
+                        for event in _handle_text_tool_calls(buf, project_path_for_tools):
+                            if event["event"] == "token":
+                                d = json.loads(event["data"])
+                                full_text += d.get("text", "")
+                            yield event
+                        buf = ""
+                        continue
+
+                    full_text += buf
                     yield {
                         "event": "token",
-                        "data": json.dumps({"text": chunk.text, "done": chunk.done}),
+                        "data": json.dumps({"text": buf, "done": chunk.done}),
                     }
+                    buf = ""
+
+                if buf.strip():
+                    clean = _strip_tool_tags(buf)
+                    if clean:
+                        full_text += clean
+                        yield {
+                            "event": "token",
+                            "data": json.dumps({"text": clean, "done": True}),
+                        }
         except Exception as e:
             if full_text.strip():
                 async with pool.acquire() as db:
@@ -318,6 +343,12 @@ async def get_context_snapshot(message_id: str, request: Request):
         return dict(rows[0])
 
 
+import re
+
+_TOOL_TAG_OPEN = "<tool_call>"
+_TOOL_TAG_CLOSE = "</tool_call>"
+_TOOL_CALL_RE = re.compile(r"<tool_call>\s*(\{.*?\})\s*</tool_call>", re.DOTALL)
+
 MAX_TOOL_ROUNDS = 5
 
 TOOL_SYSTEM_SUFFIX = (
@@ -328,6 +359,79 @@ TOOL_SYSTEM_SUFFIX = (
     "read_file to read files, list_files to browse directories. "
     "After using tools, briefly confirm what you did."
 )
+
+
+def _strip_tool_tags(text: str) -> str:
+    """Remove <tool_call>...</tool_call> blocks from text."""
+    return _TOOL_CALL_RE.sub("", text).strip()
+
+
+def _handle_text_tool_calls(text: str, project_path: str | None) -> list[dict]:
+    """Parse <tool_call> tags from text, execute tools if possible, return SSE events."""
+    events = []
+    matches = _TOOL_CALL_RE.findall(text)
+    clean_text = _TOOL_CALL_RE.sub("", text).strip()
+
+    if clean_text:
+        events.append({"event": "token", "data": json.dumps({"text": clean_text, "done": False})})
+
+    for raw in matches:
+        try:
+            parsed = json.loads(raw)
+        except (json.JSONDecodeError, TypeError):
+            continue
+
+        tool_name = parsed.get("name", "")
+        arguments = parsed.get("arguments", {})
+        if isinstance(arguments, str):
+            try:
+                arguments = json.loads(arguments)
+            except json.JSONDecodeError:
+                arguments = {}
+
+        if not tool_name:
+            continue
+
+        if project_path:
+            events.append({
+                "event": "tool_use",
+                "data": json.dumps({"tool": tool_name, "arguments": arguments, "status": "running"}),
+            })
+
+            result = execute_tool(tool_name, arguments, project_path)
+
+            events.append({
+                "event": "tool_use",
+                "data": json.dumps({"tool": tool_name, "arguments": arguments, "status": "done", "result": result}),
+            })
+
+            if result.get("error"):
+                summary = f"Failed to {tool_name}: {result['error']}"
+            elif tool_name == "create_file":
+                summary = f"Created `{arguments.get('path', '?')}` ({result.get('size', 0)} bytes)"
+            elif tool_name == "run_command":
+                output = result.get("output", "").strip()
+                code = result.get("exit_code", 0)
+                preview = output[:200] + ("..." if len(output) > 200 else "")
+                summary = f"Ran `{arguments.get('command', '?')}`"
+                if code != 0:
+                    summary += f" (exit {code})"
+                if preview:
+                    summary += f"\n```\n{preview}\n```"
+            elif tool_name == "read_file":
+                summary = f"Read `{arguments.get('path', '?')}` ({result.get('size', 0)} chars)"
+            elif tool_name == "list_files":
+                entries = result.get("entries", [])
+                summary = f"Listed `{arguments.get('path', '.')}` ({len(entries)} entries)"
+            else:
+                summary = f"Used {tool_name}"
+
+            events.append({"event": "token", "data": json.dumps({"text": "\n" + summary + "\n", "done": False})})
+        else:
+            summary = f"Tried to use `{tool_name}` but no project context available."
+            events.append({"event": "token", "data": json.dumps({"text": "\n" + summary + "\n", "done": False})})
+
+    return events
 
 
 async def _tool_loop(connector, chat_messages: list[dict] | None, system: str, project_path: str, cancel_event) -> AsyncIterator:
@@ -352,12 +456,14 @@ async def _tool_loop(connector, chat_messages: list[dict] | None, system: str, p
         tool_calls = response.get("tool_calls")
         content = response.get("content", "")
 
-        if content and not tool_calls:
-            yield {"event": "token", "data": json.dumps({"text": content, "done": True})}
+        clean_content = _strip_tool_tags(content) if content else ""
+
+        if clean_content and not tool_calls:
+            yield {"event": "token", "data": json.dumps({"text": clean_content, "done": True})}
             return
 
-        if content and tool_calls:
-            yield {"event": "token", "data": json.dumps({"text": content, "done": False})}
+        if clean_content and tool_calls:
+            yield {"event": "token", "data": json.dumps({"text": clean_content, "done": False})}
 
         if not tool_calls:
             return
@@ -391,8 +497,24 @@ async def _tool_loop(connector, chat_messages: list[dict] | None, system: str, p
 
             msgs.append({"role": "tool", "content": json.dumps(result)})
 
+    buf = ""
     async for chunk in connector.stream_after_tools(msgs):
-        yield {"event": "token", "data": json.dumps({"text": chunk.text, "done": chunk.done})}
+        buf += chunk.text
+        if _TOOL_TAG_OPEN in buf and _TOOL_TAG_CLOSE not in buf:
+            continue
+        if _TOOL_TAG_CLOSE in buf:
+            for event in _handle_text_tool_calls(buf, project_path):
+                yield event
+            buf = ""
+            continue
+        clean = _strip_tool_tags(buf)
+        if clean:
+            yield {"event": "token", "data": json.dumps({"text": clean, "done": chunk.done})}
+        buf = ""
+    if buf.strip():
+        clean = _strip_tool_tags(buf)
+        if clean:
+            yield {"event": "token", "data": json.dumps({"text": clean, "done": True})}
 
 
 async def _pick_connector(mode: str, history: list[dict], conv: dict, http: httpx.AsyncClient, model: str | None = None):
