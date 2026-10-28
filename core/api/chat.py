@@ -1,6 +1,7 @@
 import asyncio
 import json
 import time
+from collections.abc import AsyncIterator
 
 import httpx
 from fastapi import APIRouter, Request
@@ -12,6 +13,7 @@ from core.connectors.base import Prompt
 from core.connectors.claude_cli import ClaudeCliConnector
 from core.connectors.claude_sdk import ClaudeSdkConnector
 from core.connectors.ollama import OllamaConnector
+
 from core.context.assembler import assemble
 from core.context.summary import maybe_update_summary
 from core.router.decide import decide as router_decide
@@ -19,6 +21,7 @@ from core.context.project import build_project_context
 from core.store.conversations import create_conversation, get_conversation, update_conversation
 from core.store.messages import add_message, get_messages
 from core.store.projects import get_project
+from core.tools.definitions import TOOL_SCHEMAS, execute_tool
 
 router = APIRouter(prefix="/api")
 
@@ -152,6 +155,15 @@ async def chat(req: ChatRequest, request: Request):
     cancel_event = asyncio.Event()
     _active_streams[conv_id] = cancel_event
 
+    project_path_for_tools = None
+    if project_context and not is_claude:
+        async with pool.acquire() as db:
+            pid = conv.get("project_id")
+            if pid:
+                proj = await get_project(db, pid)
+                if proj:
+                    project_path_for_tools = proj["path"]
+
     async def event_stream():
         full_text = ""
         start = time.monotonic()
@@ -164,17 +176,26 @@ async def chat(req: ChatRequest, request: Request):
 
         cancelled = False
         try:
-            async for chunk in connector.stream(Prompt(text=prompt_text, system=system, messages=messages)):
-                if cancel_event.is_set():
-                    cancelled = True
-                    break
-                full_text += chunk.text
-                yield {
-                    "event": "token",
-                    "data": json.dumps({"text": chunk.text, "done": chunk.done}),
-                }
+            if project_path_for_tools and isinstance(connector, OllamaConnector):
+                async for event in _tool_loop(connector, messages, system, project_path_for_tools, cancel_event):
+                    if event["event"] == "token":
+                        data = json.loads(event["data"])
+                        full_text += data.get("text", "")
+                    yield event
+                    if cancel_event.is_set():
+                        cancelled = True
+                        break
+            else:
+                async for chunk in connector.stream(Prompt(text=prompt_text, system=system, messages=messages)):
+                    if cancel_event.is_set():
+                        cancelled = True
+                        break
+                    full_text += chunk.text
+                    yield {
+                        "event": "token",
+                        "data": json.dumps({"text": chunk.text, "done": chunk.done}),
+                    }
         except Exception as e:
-            # Save partial response on error
             if full_text.strip():
                 async with pool.acquire() as db:
                     latency = int((time.monotonic() - start) * 1000)
@@ -295,6 +316,72 @@ async def get_context_snapshot(message_id: str, request: Request):
         if not rows:
             return {"prompt_text": None, "token_estimate": None}
         return dict(rows[0])
+
+
+MAX_TOOL_ROUNDS = 5
+
+TOOL_SYSTEM_SUFFIX = (
+    "\n\nYou have tools to interact with the project files. "
+    "When the user asks you to create, write, edit, or run something, use the appropriate tool. "
+    "Do not just show code in a code block — actually create the file using the create_file tool. "
+    "After using tools, summarize what you did."
+)
+
+
+async def _tool_loop(connector: OllamaConnector, chat_messages: list[dict] | None, system: str, project_path: str, cancel_event) -> AsyncIterator:
+    """Run the tool-call loop: call model with tools, execute any tool calls, repeat."""
+    msgs = []
+    if system:
+        msgs.append({"role": "system", "content": system + TOOL_SYSTEM_SUFFIX})
+    if chat_messages:
+        msgs.extend(chat_messages)
+
+    for _round in range(MAX_TOOL_ROUNDS):
+        if cancel_event.is_set():
+            return
+
+        response = await connector.chat_with_tools(msgs, TOOL_SCHEMAS)
+        tool_calls = response.get("tool_calls")
+
+        if response.get("content"):
+            text = response["content"]
+            if not tool_calls:
+                yield {"event": "token", "data": json.dumps({"text": text, "done": True})}
+                return
+            else:
+                yield {"event": "token", "data": json.dumps({"text": text, "done": False})}
+
+        if not tool_calls:
+            return
+
+        msgs.append(response)
+
+        for tc in tool_calls:
+            fn = tc.get("function", {})
+            tool_name = fn.get("name", "")
+            arguments = fn.get("arguments", {})
+            if isinstance(arguments, str):
+                try:
+                    arguments = json.loads(arguments)
+                except json.JSONDecodeError:
+                    arguments = {}
+
+            yield {
+                "event": "tool_use",
+                "data": json.dumps({"tool": tool_name, "arguments": arguments, "status": "running"}),
+            }
+
+            result = execute_tool(tool_name, arguments, project_path)
+
+            yield {
+                "event": "tool_use",
+                "data": json.dumps({"tool": tool_name, "arguments": arguments, "status": "done", "result": result}),
+            }
+
+            msgs.append({"role": "tool", "content": json.dumps(result)})
+
+    async for chunk in connector.stream_after_tools(msgs):
+        yield {"event": "token", "data": json.dumps({"text": chunk.text, "done": chunk.done})}
 
 
 async def _pick_connector(mode: str, history: list[dict], conv: dict, http: httpx.AsyncClient, model: str | None = None):

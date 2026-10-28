@@ -3,7 +3,7 @@ import { ChatThread } from './components/ChatThread';
 import { Composer } from './components/Composer';
 import { Settings } from './components/Settings';
 import { Sidebar } from './components/Sidebar';
-import type { Conversation, Message, ModelsResponse, Project, RouteInfo } from './lib/api';
+import type { Conversation, Message, ModelsResponse, Project, RouteInfo, ToolUseEvent } from './lib/api';
 import {
   cancelStream,
   createProject,
@@ -32,6 +32,7 @@ export default function App() {
   const [selectedModel, setSelectedModel] = useState<string | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [speed, setSpeed] = useState<number | null>(null);
+  const [toolEvents, setToolEvents] = useState<ToolUseEvent[]>([]);
   const abortRef = useRef<AbortController | null>(null);
 
   const refreshConversations = useCallback(async () => {
@@ -135,6 +136,7 @@ export default function App() {
     setStreamingText('');
     setIsStreaming(true);
     setSpeed(null);
+    setToolEvents([]);
 
     const controller = streamChat(text, activeId, {
       onToken: (token) => {
@@ -143,9 +145,20 @@ export default function App() {
       onRoute: (route) => {
         setRouteInfo(route);
       },
+      onToolUse: (event) => {
+        setToolEvents((prev) => {
+          if (event.status === 'done') {
+            return prev.map((e) =>
+              e.tool === event.tool && e.status === 'running' ? event : e,
+            );
+          }
+          return [...prev, event];
+        });
+      },
       onDone: async (data) => {
         setIsStreaming(false);
         setStreamingText('');
+        setToolEvents([]);
         if (!activeId) {
           setActiveId(data.conversation_id);
           if (activeProjectId) {
@@ -161,11 +174,13 @@ export default function App() {
       onError: (err) => {
         setIsStreaming(false);
         setStreamingText('');
+        setToolEvents([]);
         setError(err);
       },
       onCancelled: () => {
         setIsStreaming(false);
         setStreamingText('');
+        setToolEvents([]);
         if (activeId) {
           getMessages(activeId).then(setMessages).catch(() => {});
         }
@@ -262,6 +277,7 @@ export default function App() {
           error={error}
           routeInfo={routeInfo}
           speed={speed}
+          toolEvents={toolEvents}
           onRetry={handleRetry}
         />
         {activeProjectId && !activeId && (

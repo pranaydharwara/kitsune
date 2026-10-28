@@ -121,12 +121,20 @@ export async function listModels(): Promise<ModelsResponse> {
   return res.json();
 }
 
+export interface ToolUseEvent {
+  tool: string;
+  arguments: Record<string, unknown>;
+  status: 'running' | 'done';
+  result?: Record<string, unknown>;
+}
+
 export interface StreamCallbacks {
   onToken: (text: string) => void;
   onDone: (data: { message: Message; conversation_id: string; route?: RouteInfo; speed?: number }) => void;
   onError: (error: string) => void;
   onRoute?: (route: RouteInfo) => void;
   onCancelled?: () => void;
+  onToolUse?: (event: ToolUseEvent) => void;
 }
 
 export interface Settings {
@@ -241,6 +249,8 @@ export function streamChat(
               callbacks.onDone(data);
             } else if (currentEvent === 'route') {
               callbacks.onRoute?.(data);
+            } else if (currentEvent === 'tool_use') {
+              callbacks.onToolUse?.(data as ToolUseEvent);
             } else {
               if (data.text) {
                 callbacks.onToken(data.text);
