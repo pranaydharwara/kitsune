@@ -321,15 +321,23 @@ async def get_context_snapshot(message_id: str, request: Request):
 MAX_TOOL_ROUNDS = 5
 
 TOOL_SYSTEM_SUFFIX = (
-    "\n\nYou have tools to interact with the project files. "
-    "When the user asks you to create, write, edit, or run something, use the appropriate tool. "
-    "Do not just show code in a code block — actually create the file using the create_file tool. "
-    "After using tools, summarize what you did."
+    "\n\nYou have tools to interact with the project files directly. "
+    "IMPORTANT: When the user asks you to create, write, edit, or run something, "
+    "you MUST use the tools — do NOT just show code in a code block. "
+    "Use create_file to make files, run_command to execute commands, "
+    "read_file to read files, list_files to browse directories. "
+    "After using tools, briefly confirm what you did."
 )
 
 
-async def _tool_loop(connector: OllamaConnector, chat_messages: list[dict] | None, system: str, project_path: str, cancel_event) -> AsyncIterator:
-    """Run the tool-call loop: call model with tools, execute any tool calls, repeat."""
+async def _tool_loop(connector, chat_messages: list[dict] | None, system: str, project_path: str, cancel_event) -> AsyncIterator:
+    """Run the tool-call loop: call model with tools, execute any tool calls, repeat.
+
+    Handles both structured tool_calls from Ollama's API and text-based
+    <tool_call> tags that models like Qwen3 sometimes emit as plain text.
+    """
+    from core.connectors.ollama import parse_text_tool_calls
+
     msgs = []
     if system:
         msgs.append({"role": "system", "content": system + TOOL_SYSTEM_SUFFIX})
@@ -342,19 +350,22 @@ async def _tool_loop(connector: OllamaConnector, chat_messages: list[dict] | Non
 
         response = await connector.chat_with_tools(msgs, TOOL_SCHEMAS)
         tool_calls = response.get("tool_calls")
+        content = response.get("content", "")
 
-        if response.get("content"):
-            text = response["content"]
-            if not tool_calls:
-                yield {"event": "token", "data": json.dumps({"text": text, "done": True})}
-                return
-            else:
-                yield {"event": "token", "data": json.dumps({"text": text, "done": False})}
+        if content and not tool_calls:
+            yield {"event": "token", "data": json.dumps({"text": content, "done": True})}
+            return
+
+        if content and tool_calls:
+            yield {"event": "token", "data": json.dumps({"text": content, "done": False})}
 
         if not tool_calls:
             return
 
-        msgs.append(response)
+        assistant_msg = {"role": "assistant", "content": content or ""}
+        if tool_calls:
+            assistant_msg["tool_calls"] = tool_calls
+        msgs.append(assistant_msg)
 
         for tc in tool_calls:
             fn = tc.get("function", {})
