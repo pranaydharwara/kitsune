@@ -15,6 +15,9 @@ from core.connectors.claude_sdk import ClaudeSdkConnector
 from core.connectors.ollama import OllamaConnector
 
 from core.context.assembler import assemble
+from core.context.errors import get_collector
+from core.context.instructions import load_project_instructions
+from core.context.mentions import resolve_mentions
 from core.context.summary import maybe_update_summary
 from core.router.decide import decide as router_decide
 from core.context.project import build_project_context
@@ -130,19 +133,39 @@ async def chat(req: ChatRequest, request: Request):
         connector, route_reason = await _pick_connector(mode, history, conv, http, model=req.model)
 
         project_context = None
+        project_path = None
+        project_instructions = None
         pid = conv.get("project_id")
         if pid:
             proj = await get_project(db, pid)
             if proj:
-                project_context = build_project_context(proj["path"])
+                project_path = proj["path"]
+                project_context = build_project_context(project_path)
+                project_instructions = load_project_instructions(project_path)
+
+        # Resolve @mentions in the user message
+        error_collector = get_collector(conv["id"])
+        mention_result = resolve_mentions(
+            req.message, project_path,
+            recent_errors=error_collector.get_recent() if error_collector.has_errors() else None,
+        )
+        mention_context = ""
+        if mention_result["context_parts"]:
+            mention_context = "\n\n## Referenced context (from @mentions)\n" + "\n\n".join(mention_result["context_parts"])
 
         is_claude = isinstance(connector, (ClaudeSdkConnector, ClaudeCliConnector))
         claude_tool_msgs = None
         if is_claude:
             summary = conv.get("summary")
             system, prompt_text = assemble(history, summary=summary)
+            if project_instructions:
+                system += f"\n\n## Project instructions\n{project_instructions}"
             if project_context:
                 system += f"\n\n## Project context\nThe user is working in the following project:\n{project_context}"
+            if mention_context:
+                system += mention_context
+            if error_collector.has_errors():
+                system += "\n\n## Recent errors in this session\n" + "\n".join(error_collector.get_recent())
             claude_tool_msgs = [{"role": m["role"], "content": m["text"]} for m in history]
             await update_conversation(db, conv["id"], escalated=True)
             messages = None
@@ -150,26 +173,33 @@ async def chat(req: ChatRequest, request: Request):
             messages = _build_local_messages(history)
             prompt_text = messages[-1]["content"] if messages else ""
             system = LOCAL_SYSTEM
+            if project_instructions:
+                system += f"\n\n## Project instructions\n{project_instructions}"
             if project_context:
                 system += f"\n\nYou have context about the user's current project:\n{project_context}"
+            if mention_context:
+                system += mention_context
+            if error_collector.has_errors():
+                system += "\n\n## Recent errors in this session\n" + "\n".join(error_collector.get_recent())
 
     conv_id = conv["id"]
     cancel_event = asyncio.Event()
     _active_streams[conv_id] = cancel_event
 
-    project_path_for_tools = None
-    if project_context:
-        async with pool.acquire() as db:
-            pid = conv.get("project_id")
-            if pid:
-                proj = await get_project(db, pid)
-                if proj:
-                    project_path_for_tools = proj["path"]
+    project_path_for_tools = project_path
+
+    resolved_mentions = mention_result["resolved"] if mention_result["resolved"] else None
 
     async def event_stream():
         full_text = ""
         start = time.monotonic()
         source = f"claude:{connector.model}" if isinstance(connector, (ClaudeSdkConnector, ClaudeCliConnector)) else f"local:{connector.model}"
+
+        if resolved_mentions:
+            yield {
+                "event": "mentions",
+                "data": json.dumps(resolved_mentions),
+            }
 
         yield {
             "event": "route",
@@ -179,7 +209,7 @@ async def chat(req: ChatRequest, request: Request):
         cancelled = False
         try:
             if project_path_for_tools and isinstance(connector, OllamaConnector):
-                async for event in _tool_loop(connector, messages, system, project_path_for_tools, cancel_event):
+                async for event in _tool_loop(connector, messages, system, project_path_for_tools, cancel_event, conv_id):
                     if event["event"] == "token":
                         data = json.loads(event["data"])
                         full_text += data.get("text", "")
@@ -188,7 +218,7 @@ async def chat(req: ChatRequest, request: Request):
                         cancelled = True
                         break
             elif project_path_for_tools and isinstance(connector, ClaudeSdkConnector):
-                async for event in _claude_tool_loop(connector, claude_tool_msgs, system, project_path_for_tools, cancel_event):
+                async for event in _claude_tool_loop(connector, claude_tool_msgs, system, project_path_for_tools, cancel_event, conv_id):
                     if event["event"] == "token":
                         data = json.loads(event["data"])
                         full_text += data.get("text", "")
@@ -208,7 +238,7 @@ async def chat(req: ChatRequest, request: Request):
                         continue
 
                     if _TOOL_TAG_CLOSE in buf:
-                        for event in _handle_text_tool_calls(buf, project_path_for_tools):
+                        for event in _handle_text_tool_calls(buf, project_path_for_tools, conv_id):
                             if event["event"] == "token":
                                 d = json.loads(event["data"])
                                 full_text += d.get("text", "")
@@ -377,7 +407,7 @@ def _strip_tool_tags(text: str) -> str:
     return _TOOL_CALL_RE.sub("", text).strip()
 
 
-def _handle_text_tool_calls(text: str, project_path: str | None) -> list[dict]:
+def _handle_text_tool_calls(text: str, project_path: str | None, conv_id: str | None = None) -> list[dict]:
     """Parse <tool_call> tags from text, execute tools if possible, return SSE events."""
     events = []
     matches = _TOOL_CALL_RE.findall(text)
@@ -385,6 +415,8 @@ def _handle_text_tool_calls(text: str, project_path: str | None) -> list[dict]:
 
     if clean_text:
         events.append({"event": "token", "data": json.dumps({"text": clean_text, "done": False})})
+
+    collector = get_collector(conv_id) if conv_id else None
 
     for raw in matches:
         try:
@@ -410,6 +442,15 @@ def _handle_text_tool_calls(text: str, project_path: str | None) -> list[dict]:
             })
 
             result = execute_tool(tool_name, arguments, project_path)
+
+            if collector and result.get("error"):
+                collector.record_tool_error(tool_name, arguments, result["error"])
+            if collector and tool_name == "run_command" and result.get("exit_code", 0) != 0:
+                collector.record_command_error(
+                    arguments.get("command", ""),
+                    result.get("exit_code", 1),
+                    result.get("output", ""),
+                )
 
             events.append({
                 "event": "tool_use",
@@ -463,7 +504,7 @@ def _tool_summary(tool_name: str, arguments: dict, result: dict) -> str:
     return f"**Used** {tool_name}"
 
 
-async def _tool_loop(connector, chat_messages: list[dict] | None, system: str, project_path: str, cancel_event) -> AsyncIterator:
+async def _tool_loop(connector, chat_messages: list[dict] | None, system: str, project_path: str, cancel_event, conv_id: str | None = None) -> AsyncIterator:
     """Run the tool-call loop: call model with tools, execute any tool calls, repeat.
 
     Handles both structured tool_calls from Ollama's API and text-based
@@ -519,6 +560,15 @@ async def _tool_loop(connector, chat_messages: list[dict] | None, system: str, p
 
             result = execute_tool(tool_name, arguments, project_path)
 
+            if conv_id:
+                collector = get_collector(conv_id)
+                if result.get("error"):
+                    collector.record_tool_error(tool_name, arguments, result["error"])
+                if tool_name == "run_command" and result.get("exit_code", 0) != 0:
+                    collector.record_command_error(
+                        arguments.get("command", ""), result.get("exit_code", 1), result.get("output", ""),
+                    )
+
             yield {
                 "event": "tool_use",
                 "data": json.dumps({"tool": tool_name, "arguments": arguments, "status": "done", "result": result}),
@@ -532,7 +582,7 @@ async def _tool_loop(connector, chat_messages: list[dict] | None, system: str, p
         if _TOOL_TAG_OPEN in buf and _TOOL_TAG_CLOSE not in buf:
             continue
         if _TOOL_TAG_CLOSE in buf:
-            for event in _handle_text_tool_calls(buf, project_path):
+            for event in _handle_text_tool_calls(buf, project_path, conv_id):
                 yield event
             buf = ""
             continue
@@ -546,7 +596,7 @@ async def _tool_loop(connector, chat_messages: list[dict] | None, system: str, p
             yield {"event": "token", "data": json.dumps({"text": clean, "done": True})}
 
 
-async def _claude_tool_loop(connector: ClaudeSdkConnector, chat_messages: list[dict], system: str, project_path: str, cancel_event) -> AsyncIterator:
+async def _claude_tool_loop(connector: ClaudeSdkConnector, chat_messages: list[dict], system: str, project_path: str, cancel_event, conv_id: str | None = None) -> AsyncIterator:
     """Tool-call loop for Claude SDK using native Anthropic tool use."""
     msgs = list(chat_messages)
     tool_system = system + TOOL_SYSTEM_SUFFIX
@@ -596,6 +646,15 @@ async def _claude_tool_loop(connector: ClaudeSdkConnector, chat_messages: list[d
             }
 
             result = execute_tool(tool_name, arguments, project_path)
+
+            if conv_id:
+                collector = get_collector(conv_id)
+                if result.get("error"):
+                    collector.record_tool_error(tool_name, arguments, result["error"])
+                if tool_name == "run_command" and result.get("exit_code", 0) != 0:
+                    collector.record_command_error(
+                        arguments.get("command", ""), result.get("exit_code", 1), result.get("output", ""),
+                    )
 
             yield {
                 "event": "tool_use",

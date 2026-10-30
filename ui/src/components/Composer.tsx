@@ -2,6 +2,7 @@ import { createPortal } from 'react-dom';
 import { ArrowUp, ChevronDown, Square } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import type { ModelsResponse } from '../lib/api';
+import { MentionMenu } from './MentionMenu';
 
 interface ComposerProps {
   onSend: (message: string) => void;
@@ -12,12 +13,15 @@ interface ComposerProps {
   selectedModel: string | null;
   onSelect: (mode: string, model: string | null) => void;
   models: ModelsResponse;
+  activeProjectId?: string | null;
 }
 
-export function Composer({ onSend, disabled, isStreaming, onCancel, mode, selectedModel, onSelect, models }: ComposerProps) {
+export function Composer({ onSend, disabled, isStreaming, onCancel, mode, selectedModel, onSelect, models, activeProjectId }: ComposerProps) {
   const [text, setText] = useState('');
   const [openMenu, setOpenMenu] = useState<string | null>(null);
   const [menuPos, setMenuPos] = useState<{ left: number; bottom: number } | null>(null);
+  const [mentionQuery, setMentionQuery] = useState<string | null>(null);
+  const [mentionPos, setMentionPos] = useState<{ left: number; bottom: number } | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
   const buttonRefs = useRef<Record<string, HTMLButtonElement | null>>({});
@@ -63,6 +67,37 @@ export function Composer({ onSend, disabled, isStreaming, onCancel, mode, select
     if (el) {
       el.style.height = 'auto';
       el.style.height = Math.min(el.scrollHeight, 200) + 'px';
+
+      // Detect @mention trigger
+      const cursorPos = el.selectionStart;
+      const textBefore = el.value.slice(0, cursorPos);
+      const atMatch = textBefore.match(/@(\S*)$/);
+      if (atMatch) {
+        const rect = el.getBoundingClientRect();
+        setMentionQuery(atMatch[0]);
+        setMentionPos({ left: rect.left + 16, bottom: window.innerHeight - rect.top + 4 });
+      } else {
+        setMentionQuery(null);
+      }
+    }
+  };
+
+  const handleMentionSelect = (value: string) => {
+    const el = textareaRef.current;
+    if (!el) return;
+    const cursorPos = el.selectionStart;
+    const textBefore = el.value.slice(0, cursorPos);
+    const atMatch = textBefore.match(/@\S*$/);
+    if (atMatch) {
+      const start = cursorPos - atMatch[0].length;
+      const newText = el.value.slice(0, start) + value + ' ' + el.value.slice(cursorPos);
+      setText(newText);
+      setMentionQuery(null);
+      setTimeout(() => {
+        el.focus();
+        const newPos = start + value.length + 1;
+        el.setSelectionRange(newPos, newPos);
+      }, 0);
     }
   };
 
@@ -174,6 +209,17 @@ export function Composer({ onSend, disabled, isStreaming, onCancel, mode, select
           )}
         </div>
       </div>
+
+      {mentionQuery !== null && mentionPos && createPortal(
+        <MentionMenu
+          query={mentionQuery}
+          projectId={activeProjectId || null}
+          position={mentionPos}
+          onSelect={handleMentionSelect}
+          onClose={() => setMentionQuery(null)}
+        />,
+        document.body
+      )}
 
       {openMenu && activeModels.length > 0 && menuPos && createPortal(
         <div ref={menuRef}>

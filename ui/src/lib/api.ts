@@ -135,6 +135,7 @@ export interface StreamCallbacks {
   onRoute?: (route: RouteInfo) => void;
   onCancelled?: () => void;
   onToolUse?: (event: ToolUseEvent) => void;
+  onMentions?: (mentions: ResolvedMention[]) => void;
 }
 
 export interface Settings {
@@ -197,6 +198,54 @@ export async function importConversations(file: File): Promise<{ imported: numbe
   return res.json();
 }
 
+export interface MentionCompletion {
+  type: string;
+  value: string;
+  label: string;
+  detail?: string;
+}
+
+export interface ResolvedMention {
+  type: string;
+  arg: string;
+  status: 'ok' | 'not_found';
+}
+
+export interface FileSearchResult {
+  path: string;
+  name: string;
+  ext: string;
+  size: number;
+  is_dir: boolean;
+}
+
+export async function searchFiles(projectId: string, query: string): Promise<{ results: FileSearchResult[] }> {
+  const res = await fetch(`${BASE}/search/files`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ project_id: projectId, query, limit: 20 }),
+  });
+  return res.json();
+}
+
+export async function searchContent(projectId: string, query: string): Promise<{ results: { path: string; matches: { line: number; text: string }[] }[] }> {
+  const res = await fetch(`${BASE}/search/content`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ project_id: projectId, query, limit: 10 }),
+  });
+  return res.json();
+}
+
+export async function getMentionCompletions(query: string, projectId?: string): Promise<{ completions: MentionCompletion[] }> {
+  const res = await fetch(`${BASE}/mentions/complete`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ query, project_id: projectId || null }),
+  });
+  return res.json();
+}
+
 export function streamChat(
   message: string,
   conversationId: string | null,
@@ -251,6 +300,8 @@ export function streamChat(
               callbacks.onRoute?.(data);
             } else if (currentEvent === 'tool_use') {
               callbacks.onToolUse?.(data as ToolUseEvent);
+            } else if (currentEvent === 'mentions') {
+              callbacks.onMentions?.(data as ResolvedMention[]);
             } else {
               if (data.text) {
                 callbacks.onToken(data.text);

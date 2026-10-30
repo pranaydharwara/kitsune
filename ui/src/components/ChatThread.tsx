@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
-import { Check, Copy, ThumbsUp, ThumbsDown, FileText, Terminal, FolderOpen, Eye, Loader2 } from 'lucide-react';
+import { Check, Copy, ThumbsUp, ThumbsDown, FileText, Terminal, FolderOpen, Eye, Loader2, AtSign, AlertCircle } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import type { Message, RouteInfo, ToolUseEvent } from '../lib/api';
+import type { Message, ResolvedMention, RouteInfo, ToolUseEvent } from '../lib/api';
 import { getContextSnapshot, submitFeedback } from '../lib/api';
 
 interface ChatThreadProps {
@@ -13,10 +13,11 @@ interface ChatThreadProps {
   routeInfo: RouteInfo | null;
   speed: number | null;
   toolEvents: ToolUseEvent[];
+  resolvedMentions: ResolvedMention[];
   onRetry: (messageId: string, retryWith: 'local' | 'cloud') => void;
 }
 
-export function ChatThread({ messages, streamingText, isStreaming, error, routeInfo, speed: _speed, toolEvents, onRetry }: ChatThreadProps) {
+export function ChatThread({ messages, streamingText, isStreaming, error, routeInfo, speed: _speed, toolEvents, resolvedMentions, onRetry }: ChatThreadProps) {
   const bottomRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -81,6 +82,13 @@ export function ChatThread({ messages, streamingText, isStreaming, error, routeI
             {routeInfo && (
               <div className="mb-2">
                 <RouteBadge route={routeInfo} />
+              </div>
+            )}
+            {resolvedMentions.length > 0 && (
+              <div className="mb-2 flex flex-wrap gap-1.5">
+                {resolvedMentions.map((m, i) => (
+                  <MentionBadge key={i} mention={m} />
+                ))}
               </div>
             )}
             {toolEvents.length > 0 && (
@@ -338,6 +346,34 @@ function FeedbackButtons({ messageId }: { messageId: string }) {
       >
         <ThumbsDown size={13} />
       </button>
+    </span>
+  );
+}
+
+const MENTION_ICONS: Record<string, typeof FileText> = {
+  file: FileText,
+  folder: FolderOpen,
+  errors: AlertCircle,
+};
+
+function MentionBadge({ mention }: { mention: ResolvedMention }) {
+  const Icon = MENTION_ICONS[mention.type] || AtSign;
+  const isOk = mention.status === 'ok';
+  return (
+    <span
+      className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs"
+      style={{
+        background: isOk ? 'var(--bg-secondary)' : 'transparent',
+        color: isOk ? 'var(--accent)' : 'var(--text-muted)',
+        border: `1px solid ${isOk ? 'var(--border-light)' : '#d6303140'}`,
+      }}
+    >
+      <Icon size={12} />
+      <span>@{mention.type}</span>
+      {mention.arg && (
+        <code className="text-[11px]" style={{ fontFamily: 'monospace' }}>{mention.arg}</code>
+      )}
+      {!isOk && <span style={{ color: '#d63031', fontSize: '10px' }}>not found</span>}
     </span>
   );
 }

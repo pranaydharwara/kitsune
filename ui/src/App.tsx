@@ -4,7 +4,7 @@ import { Composer } from './components/Composer';
 import { Settings } from './components/Settings';
 import { Sidebar } from './components/Sidebar';
 import { ToolActivity } from './components/ToolActivity';
-import type { Conversation, Message, ModelsResponse, Project, RouteInfo, ToolUseEvent } from './lib/api';
+import type { Conversation, Message, ModelsResponse, Project, ResolvedMention, RouteInfo, ToolUseEvent } from './lib/api';
 import {
   cancelStream,
   createProject,
@@ -35,6 +35,7 @@ export default function App() {
   const [speed, setSpeed] = useState<number | null>(null);
   const [toolEvents, setToolEvents] = useState<ToolUseEvent[]>([]);
   const [toolPanelOpen, setToolPanelOpen] = useState(false);
+  const [resolvedMentions, setResolvedMentions] = useState<ResolvedMention[]>([]);
   const abortRef = useRef<AbortController | null>(null);
 
   const refreshConversations = useCallback(async () => {
@@ -140,6 +141,7 @@ export default function App() {
     setSpeed(null);
     setToolEvents([]);
     setToolPanelOpen(false);
+    setResolvedMentions([]);
 
     const controller = streamChat(text, activeId, {
       onToken: (token) => {
@@ -166,6 +168,9 @@ export default function App() {
           }
           return [...prev, event];
         });
+      },
+      onMentions: (mentions) => {
+        setResolvedMentions(mentions);
       },
       onDone: async (data) => {
         setIsStreaming(false);
@@ -287,6 +292,7 @@ export default function App() {
           routeInfo={routeInfo}
           speed={speed}
           toolEvents={toolEvents}
+          resolvedMentions={resolvedMentions}
           onRetry={handleRetry}
         />
         {activeProjectId && !activeId && (
@@ -316,6 +322,7 @@ export default function App() {
           selectedModel={selectedModel}
           onSelect={(m, model) => { setMode(m); setSelectedModel(model); }}
           models={models}
+          activeProjectId={activeProjectId}
         />
       </main>
       <ToolActivity events={toolEvents} open={toolPanelOpen} onClose={() => setToolPanelOpen(false)} />
