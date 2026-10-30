@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
-import { Check, Copy, ThumbsUp, ThumbsDown } from 'lucide-react';
+import { Check, Copy, ThumbsUp, ThumbsDown, FileText, Terminal, FolderOpen, Eye, Loader2, AtSign, AlertCircle } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import type { Message, RouteInfo } from '../lib/api';
+import type { Message, ResolvedMention, RouteInfo, ToolUseEvent } from '../lib/api';
 import { getContextSnapshot, submitFeedback } from '../lib/api';
 
 interface ChatThreadProps {
@@ -12,10 +12,12 @@ interface ChatThreadProps {
   error: string | null;
   routeInfo: RouteInfo | null;
   speed: number | null;
+  toolEvents: ToolUseEvent[];
+  resolvedMentions: ResolvedMention[];
   onRetry: (messageId: string, retryWith: 'local' | 'cloud') => void;
 }
 
-export function ChatThread({ messages, streamingText, isStreaming, error, routeInfo, speed: _speed, onRetry }: ChatThreadProps) {
+export function ChatThread({ messages, streamingText, isStreaming, error, routeInfo, speed: _speed, toolEvents, resolvedMentions, onRetry }: ChatThreadProps) {
   const bottomRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -82,13 +84,31 @@ export function ChatThread({ messages, streamingText, isStreaming, error, routeI
                 <RouteBadge route={routeInfo} />
               </div>
             )}
+            {resolvedMentions.length > 0 && (
+              <div className="mb-2 flex flex-wrap gap-1.5">
+                {resolvedMentions.map((m, i) => (
+                  <MentionBadge key={i} mention={m} />
+                ))}
+              </div>
+            )}
+            {toolEvents.length > 0 && (
+              <div className="mb-3 flex flex-col gap-1.5">
+                {toolEvents.map((evt, i) => (
+                  <ToolEventBadge key={i} event={evt} />
+                ))}
+              </div>
+            )}
             <div className="py-3">
               <div className="markdown-body" style={{ color: 'var(--text-primary)', fontSize: '15px', lineHeight: '1.6' }}>
                 <ReactMarkdown remarkPlugins={[remarkGfm]}>{streamingText || ''}</ReactMarkdown>
-                <span
-                  className="inline-block w-[3px] h-[18px] ml-0.5 animate-pulse rounded-full"
-                  style={{ background: 'var(--accent)' }}
-                />
+                {!streamingText && toolEvents.length > 0 && toolEvents.some(e => e.status === 'running') ? (
+                  <span className="text-sm" style={{ color: 'var(--text-muted)' }}>Working...</span>
+                ) : (
+                  <span
+                    className="inline-block w-[3px] h-[18px] ml-0.5 animate-pulse rounded-full"
+                    style={{ background: 'var(--accent)' }}
+                  />
+                )}
               </div>
             </div>
           </div>
@@ -120,6 +140,70 @@ function RouteBadge({ route }: { route: RouteInfo }) {
     >
       {isCloud ? '☁️' : '💻'} {route.reason}
     </span>
+  );
+}
+
+const TOOL_ICONS: Record<string, typeof FileText> = {
+  create_file: FileText,
+  read_file: Eye,
+  list_files: FolderOpen,
+  run_command: Terminal,
+};
+
+const TOOL_LABELS: Record<string, string> = {
+  create_file: 'Creating',
+  read_file: 'Reading',
+  list_files: 'Listing',
+  run_command: 'Running',
+};
+
+function ToolEventBadge({ event }: { event: ToolUseEvent }) {
+  const Icon = TOOL_ICONS[event.tool] || Terminal;
+  const label = TOOL_LABELS[event.tool] || event.tool;
+  const isRunning = event.status === 'running';
+  const isDone = event.status === 'done';
+  const hasError = isDone && event.result && 'error' in event.result;
+
+  let detail = '';
+  if (event.tool === 'create_file' || event.tool === 'read_file') {
+    detail = (event.arguments.path as string) || '';
+  } else if (event.tool === 'list_files') {
+    detail = (event.arguments.path as string) || '.';
+  } else if (event.tool === 'run_command') {
+    const cmd = (event.arguments.command as string) || '';
+    detail = cmd.length > 60 ? cmd.slice(0, 57) + '...' : cmd;
+  }
+
+  return (
+    <div
+      className="flex items-center gap-2 px-3 py-2 rounded-lg text-xs"
+      style={{
+        background: 'var(--bg-secondary)',
+        border: `1px solid ${hasError ? '#d6303140' : 'var(--border-light)'}`,
+        color: hasError ? '#d63031' : 'var(--text-secondary)',
+      }}
+    >
+      {isRunning ? (
+        <Loader2 size={13} className="animate-spin" style={{ color: 'var(--accent)' }} />
+      ) : (
+        <Icon size={13} style={{ color: hasError ? '#d63031' : 'var(--accent)' }} />
+      )}
+      <span style={{ fontWeight: 500 }}>{label}</span>
+      {detail && (
+        <code
+          className="px-1.5 py-0.5 rounded text-[11px]"
+          style={{ background: 'var(--surface-hover)', fontFamily: 'monospace' }}
+        >
+          {detail}
+        </code>
+      )}
+      {isDone && !hasError && (
+        <Check size={12} style={{ color: 'var(--accent)', marginLeft: 'auto' }} />
+      )}
+      {hasError && (
+        <span className="ml-auto text-[11px]">Failed</span>
+      )}
+    </div>
   );
 }
 
@@ -262,6 +346,34 @@ function FeedbackButtons({ messageId }: { messageId: string }) {
       >
         <ThumbsDown size={13} />
       </button>
+    </span>
+  );
+}
+
+const MENTION_ICONS: Record<string, typeof FileText> = {
+  file: FileText,
+  folder: FolderOpen,
+  errors: AlertCircle,
+};
+
+function MentionBadge({ mention }: { mention: ResolvedMention }) {
+  const Icon = MENTION_ICONS[mention.type] || AtSign;
+  const isOk = mention.status === 'ok';
+  return (
+    <span
+      className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs"
+      style={{
+        background: isOk ? 'var(--bg-secondary)' : 'transparent',
+        color: isOk ? 'var(--accent)' : 'var(--text-muted)',
+        border: `1px solid ${isOk ? 'var(--border-light)' : '#d6303140'}`,
+      }}
+    >
+      <Icon size={12} />
+      <span>@{mention.type}</span>
+      {mention.arg && (
+        <code className="text-[11px]" style={{ fontFamily: 'monospace' }}>{mention.arg}</code>
+      )}
+      {!isOk && <span style={{ color: '#d63031', fontSize: '10px' }}>not found</span>}
     </span>
   );
 }

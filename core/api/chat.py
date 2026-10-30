@@ -1,6 +1,7 @@
 import asyncio
 import json
 import time
+from collections.abc import AsyncIterator
 
 import httpx
 from fastapi import APIRouter, Request
@@ -12,11 +13,18 @@ from core.connectors.base import Prompt
 from core.connectors.claude_cli import ClaudeCliConnector
 from core.connectors.claude_sdk import ClaudeSdkConnector
 from core.connectors.ollama import OllamaConnector
+
 from core.context.assembler import assemble
+from core.context.errors import get_collector
+from core.context.instructions import load_project_instructions
+from core.context.mentions import resolve_mentions
 from core.context.summary import maybe_update_summary
 from core.router.decide import decide as router_decide
+from core.context.project import build_project_context
 from core.store.conversations import create_conversation, get_conversation, update_conversation
 from core.store.messages import add_message, get_messages
+from core.store.projects import get_project
+from core.tools.definitions import TOOL_SCHEMAS, execute_tool
 
 router = APIRouter(prefix="/api")
 
@@ -76,6 +84,7 @@ def _get_claude_connector() -> ClaudeSdkConnector | ClaudeCliConnector:
 class ChatRequest(BaseModel):
     message: str
     conversation_id: str | None = None
+    project_id: str | None = None
     mode: str = "auto"
     model: str | None = None
     retry_message_id: str | None = None
@@ -112,9 +121,9 @@ async def chat(req: ChatRequest, request: Request):
         if req.conversation_id:
             conv = await get_conversation(db, req.conversation_id)
             if not conv:
-                conv = await create_conversation(db, title=req.message[:60])
+                conv = await create_conversation(db, title=req.message[:60], project_id=req.project_id)
         else:
-            conv = await create_conversation(db, title=req.message[:60])
+            conv = await create_conversation(db, title=req.message[:60], project_id=req.project_id)
 
         if not req.retry_message_id:
             await add_message(db, conv["id"], "user", req.message)
@@ -123,25 +132,74 @@ async def chat(req: ChatRequest, request: Request):
         mode = req.retry_with or req.mode
         connector, route_reason = await _pick_connector(mode, history, conv, http, model=req.model)
 
+        project_context = None
+        project_path = None
+        project_instructions = None
+        pid = conv.get("project_id")
+        if pid:
+            proj = await get_project(db, pid)
+            if proj:
+                project_path = proj["path"]
+                project_context = build_project_context(project_path)
+                project_instructions = load_project_instructions(project_path)
+
+        # Resolve @mentions in the user message
+        error_collector = get_collector(conv["id"])
+        mention_result = resolve_mentions(
+            req.message, project_path,
+            recent_errors=error_collector.get_recent() if error_collector.has_errors() else None,
+        )
+        mention_context = ""
+        if mention_result["context_parts"]:
+            mention_context = "\n\n## Referenced context (from @mentions)\n" + "\n\n".join(mention_result["context_parts"])
+
         is_claude = isinstance(connector, (ClaudeSdkConnector, ClaudeCliConnector))
+        claude_tool_msgs = None
         if is_claude:
             summary = conv.get("summary")
             system, prompt_text = assemble(history, summary=summary)
+            if project_instructions:
+                system += f"\n\n## Project instructions\n{project_instructions}"
+            if project_context:
+                system += f"\n\n## Project context\nThe user is working in the following project:\n{project_context}"
+            if mention_context:
+                system += mention_context
+            if error_collector.has_errors():
+                system += "\n\n## Recent errors in this session\n" + "\n".join(error_collector.get_recent())
+            claude_tool_msgs = [{"role": m["role"], "content": m["text"]} for m in history]
             await update_conversation(db, conv["id"], escalated=True)
             messages = None
         else:
             messages = _build_local_messages(history)
             prompt_text = messages[-1]["content"] if messages else ""
             system = LOCAL_SYSTEM
+            if project_instructions:
+                system += f"\n\n## Project instructions\n{project_instructions}"
+            if project_context:
+                system += f"\n\nYou have context about the user's current project:\n{project_context}"
+            if mention_context:
+                system += mention_context
+            if error_collector.has_errors():
+                system += "\n\n## Recent errors in this session\n" + "\n".join(error_collector.get_recent())
 
     conv_id = conv["id"]
     cancel_event = asyncio.Event()
     _active_streams[conv_id] = cancel_event
 
+    project_path_for_tools = project_path
+
+    resolved_mentions = mention_result["resolved"] if mention_result["resolved"] else None
+
     async def event_stream():
         full_text = ""
         start = time.monotonic()
         source = f"claude:{connector.model}" if isinstance(connector, (ClaudeSdkConnector, ClaudeCliConnector)) else f"local:{connector.model}"
+
+        if resolved_mentions:
+            yield {
+                "event": "mentions",
+                "data": json.dumps(resolved_mentions),
+            }
 
         yield {
             "event": "route",
@@ -150,17 +208,60 @@ async def chat(req: ChatRequest, request: Request):
 
         cancelled = False
         try:
-            async for chunk in connector.stream(Prompt(text=prompt_text, system=system, messages=messages)):
-                if cancel_event.is_set():
-                    cancelled = True
-                    break
-                full_text += chunk.text
-                yield {
-                    "event": "token",
-                    "data": json.dumps({"text": chunk.text, "done": chunk.done}),
-                }
+            if project_path_for_tools and isinstance(connector, OllamaConnector):
+                async for event in _tool_loop(connector, messages, system, project_path_for_tools, cancel_event, conv_id):
+                    if event["event"] == "token":
+                        data = json.loads(event["data"])
+                        full_text += data.get("text", "")
+                    yield event
+                    if cancel_event.is_set():
+                        cancelled = True
+                        break
+            elif project_path_for_tools and isinstance(connector, ClaudeSdkConnector):
+                async for event in _claude_tool_loop(connector, claude_tool_msgs, system, project_path_for_tools, cancel_event, conv_id):
+                    if event["event"] == "token":
+                        data = json.loads(event["data"])
+                        full_text += data.get("text", "")
+                    yield event
+                    if cancel_event.is_set():
+                        cancelled = True
+                        break
+            else:
+                buf = ""
+                async for chunk in connector.stream(Prompt(text=prompt_text, system=system, messages=messages)):
+                    if cancel_event.is_set():
+                        cancelled = True
+                        break
+                    buf += chunk.text
+
+                    if _TOOL_TAG_OPEN in buf and _TOOL_TAG_CLOSE not in buf:
+                        continue
+
+                    if _TOOL_TAG_CLOSE in buf:
+                        for event in _handle_text_tool_calls(buf, project_path_for_tools, conv_id):
+                            if event["event"] == "token":
+                                d = json.loads(event["data"])
+                                full_text += d.get("text", "")
+                            yield event
+                        buf = ""
+                        continue
+
+                    full_text += buf
+                    yield {
+                        "event": "token",
+                        "data": json.dumps({"text": buf, "done": chunk.done}),
+                    }
+                    buf = ""
+
+                if buf.strip():
+                    clean = _strip_tool_tags(buf)
+                    if clean:
+                        full_text += clean
+                        yield {
+                            "event": "token",
+                            "data": json.dumps({"text": clean, "done": True}),
+                        }
         except Exception as e:
-            # Save partial response on error
             if full_text.strip():
                 async with pool.acquire() as db:
                     latency = int((time.monotonic() - start) * 1000)
@@ -281,6 +382,296 @@ async def get_context_snapshot(message_id: str, request: Request):
         if not rows:
             return {"prompt_text": None, "token_estimate": None}
         return dict(rows[0])
+
+
+import re
+
+_TOOL_TAG_OPEN = "<tool_call>"
+_TOOL_TAG_CLOSE = "</tool_call>"
+_TOOL_CALL_RE = re.compile(r"<tool_call>\s*(\{.*?\})\s*</tool_call>", re.DOTALL)
+
+MAX_TOOL_ROUNDS = 5
+
+TOOL_SYSTEM_SUFFIX = (
+    "\n\nYou have tools to interact with the project files directly. "
+    "IMPORTANT: When the user asks you to create, write, edit, or run something, "
+    "you MUST use the tools — do NOT just show code in a code block. "
+    "Use create_file to make files, run_command to execute commands, "
+    "read_file to read files, list_files to browse directories. "
+    "After using tools, briefly confirm what you did."
+)
+
+
+def _strip_tool_tags(text: str) -> str:
+    """Remove <tool_call>...</tool_call> blocks from text."""
+    return _TOOL_CALL_RE.sub("", text).strip()
+
+
+def _handle_text_tool_calls(text: str, project_path: str | None, conv_id: str | None = None) -> list[dict]:
+    """Parse <tool_call> tags from text, execute tools if possible, return SSE events."""
+    events = []
+    matches = _TOOL_CALL_RE.findall(text)
+    clean_text = _TOOL_CALL_RE.sub("", text).strip()
+
+    if clean_text:
+        events.append({"event": "token", "data": json.dumps({"text": clean_text, "done": False})})
+
+    collector = get_collector(conv_id) if conv_id else None
+
+    for raw in matches:
+        try:
+            parsed = json.loads(raw)
+        except (json.JSONDecodeError, TypeError):
+            continue
+
+        tool_name = parsed.get("name", "")
+        arguments = parsed.get("arguments", {})
+        if isinstance(arguments, str):
+            try:
+                arguments = json.loads(arguments)
+            except json.JSONDecodeError:
+                arguments = {}
+
+        if not tool_name:
+            continue
+
+        if project_path:
+            events.append({
+                "event": "tool_use",
+                "data": json.dumps({"tool": tool_name, "arguments": arguments, "status": "running"}),
+            })
+
+            result = execute_tool(tool_name, arguments, project_path)
+
+            if collector and result.get("error"):
+                collector.record_tool_error(tool_name, arguments, result["error"])
+            if collector and tool_name == "run_command" and result.get("exit_code", 0) != 0:
+                collector.record_command_error(
+                    arguments.get("command", ""),
+                    result.get("exit_code", 1),
+                    result.get("output", ""),
+                )
+
+            events.append({
+                "event": "tool_use",
+                "data": json.dumps({"tool": tool_name, "arguments": arguments, "status": "done", "result": result}),
+            })
+
+            summary = _tool_summary(tool_name, arguments, result)
+            events.append({"event": "token", "data": json.dumps({"text": "\n\n" + summary + "\n\n", "done": False})})
+        else:
+            summary = f"Tried to use `{tool_name}` but no project context available."
+            events.append({"event": "token", "data": json.dumps({"text": "\n\n" + summary + "\n\n", "done": False})})
+
+    return events
+
+
+def _tool_summary(tool_name: str, arguments: dict, result: dict) -> str:
+    """Build a human-readable summary of a tool execution."""
+    if result.get("error"):
+        return f"**{tool_name} failed:** {result['error']}"
+
+    if tool_name == "create_file":
+        path = arguments.get("path", "?")
+        size = result.get("size", 0)
+        return f"**Created** `{path}` ({size} bytes)"
+
+    if tool_name == "run_command":
+        cmd = arguments.get("command", "?")
+        output = result.get("output", "").strip()
+        code = result.get("exit_code", 0)
+        parts = [f"**Ran** `{cmd}`"]
+        if code != 0:
+            parts[0] += f" — exit code {code}"
+        if output:
+            preview = output[:500] + ("..." if len(output) > 500 else "")
+            parts.append(f"\n```\n{preview}\n```")
+        return "".join(parts)
+
+    if tool_name == "read_file":
+        path = arguments.get("path", "?")
+        size = result.get("size", 0)
+        return f"**Read** `{path}` ({size} chars)"
+
+    if tool_name == "list_files":
+        path = arguments.get("path", ".")
+        entries = result.get("entries", [])
+        listing = "\n".join(entries[:30])
+        if len(entries) > 30:
+            listing += f"\n... ({len(entries)} total)"
+        return f"**Listed** `{path}`\n```\n{listing}\n```"
+
+    return f"**Used** {tool_name}"
+
+
+async def _tool_loop(connector, chat_messages: list[dict] | None, system: str, project_path: str, cancel_event, conv_id: str | None = None) -> AsyncIterator:
+    """Run the tool-call loop: call model with tools, execute any tool calls, repeat.
+
+    Handles both structured tool_calls from Ollama's API and text-based
+    <tool_call> tags that models like Qwen3 sometimes emit as plain text.
+    """
+    from core.connectors.ollama import parse_text_tool_calls
+
+    msgs = []
+    if system:
+        msgs.append({"role": "system", "content": system + TOOL_SYSTEM_SUFFIX})
+    if chat_messages:
+        msgs.extend(chat_messages)
+
+    for _round in range(MAX_TOOL_ROUNDS):
+        if cancel_event.is_set():
+            return
+
+        response = await connector.chat_with_tools(msgs, TOOL_SCHEMAS)
+        tool_calls = response.get("tool_calls")
+        content = response.get("content", "")
+
+        clean_content = _strip_tool_tags(content) if content else ""
+
+        if clean_content and not tool_calls:
+            yield {"event": "token", "data": json.dumps({"text": clean_content, "done": True})}
+            return
+
+        if clean_content and tool_calls:
+            yield {"event": "token", "data": json.dumps({"text": clean_content, "done": False})}
+
+        if not tool_calls:
+            return
+
+        assistant_msg = {"role": "assistant", "content": content or ""}
+        if tool_calls:
+            assistant_msg["tool_calls"] = tool_calls
+        msgs.append(assistant_msg)
+
+        for tc in tool_calls:
+            fn = tc.get("function", {})
+            tool_name = fn.get("name", "")
+            arguments = fn.get("arguments", {})
+            if isinstance(arguments, str):
+                try:
+                    arguments = json.loads(arguments)
+                except json.JSONDecodeError:
+                    arguments = {}
+
+            yield {
+                "event": "tool_use",
+                "data": json.dumps({"tool": tool_name, "arguments": arguments, "status": "running"}),
+            }
+
+            result = execute_tool(tool_name, arguments, project_path)
+
+            if conv_id:
+                collector = get_collector(conv_id)
+                if result.get("error"):
+                    collector.record_tool_error(tool_name, arguments, result["error"])
+                if tool_name == "run_command" and result.get("exit_code", 0) != 0:
+                    collector.record_command_error(
+                        arguments.get("command", ""), result.get("exit_code", 1), result.get("output", ""),
+                    )
+
+            yield {
+                "event": "tool_use",
+                "data": json.dumps({"tool": tool_name, "arguments": arguments, "status": "done", "result": result}),
+            }
+
+            msgs.append({"role": "tool", "content": json.dumps(result)})
+
+    buf = ""
+    async for chunk in connector.stream_after_tools(msgs):
+        buf += chunk.text
+        if _TOOL_TAG_OPEN in buf and _TOOL_TAG_CLOSE not in buf:
+            continue
+        if _TOOL_TAG_CLOSE in buf:
+            for event in _handle_text_tool_calls(buf, project_path, conv_id):
+                yield event
+            buf = ""
+            continue
+        clean = _strip_tool_tags(buf)
+        if clean:
+            yield {"event": "token", "data": json.dumps({"text": clean, "done": chunk.done})}
+        buf = ""
+    if buf.strip():
+        clean = _strip_tool_tags(buf)
+        if clean:
+            yield {"event": "token", "data": json.dumps({"text": clean, "done": True})}
+
+
+async def _claude_tool_loop(connector: ClaudeSdkConnector, chat_messages: list[dict], system: str, project_path: str, cancel_event, conv_id: str | None = None) -> AsyncIterator:
+    """Tool-call loop for Claude SDK using native Anthropic tool use."""
+    msgs = list(chat_messages)
+    tool_system = system + TOOL_SYSTEM_SUFFIX
+
+    for _round in range(MAX_TOOL_ROUNDS):
+        if cancel_event.is_set():
+            return
+
+        response = await connector.chat_with_tools(msgs, TOOL_SCHEMAS, system=tool_system)
+        tool_calls = response.get("tool_calls")
+        content = response.get("content", "")
+
+        if content and not tool_calls:
+            yield {"event": "token", "data": json.dumps({"text": content, "done": True})}
+            return
+
+        if content:
+            yield {"event": "token", "data": json.dumps({"text": content, "done": False})}
+
+        if not tool_calls:
+            return
+
+        # Build assistant message with content blocks for Claude API
+        assistant_content = []
+        if content:
+            assistant_content.append({"type": "text", "text": content})
+        for tc in tool_calls:
+            fn = tc.get("function", {})
+            assistant_content.append({
+                "type": "tool_use",
+                "id": tc.get("id", f"tool_{_round}"),
+                "name": fn.get("name", ""),
+                "input": fn.get("arguments", {}),
+            })
+        msgs.append({"role": "assistant", "content": assistant_content})
+
+        # Execute tools and build tool_result message
+        tool_results = []
+        for tc in tool_calls:
+            fn = tc.get("function", {})
+            tool_name = fn.get("name", "")
+            arguments = fn.get("arguments", {})
+
+            yield {
+                "event": "tool_use",
+                "data": json.dumps({"tool": tool_name, "arguments": arguments, "status": "running"}),
+            }
+
+            result = execute_tool(tool_name, arguments, project_path)
+
+            if conv_id:
+                collector = get_collector(conv_id)
+                if result.get("error"):
+                    collector.record_tool_error(tool_name, arguments, result["error"])
+                if tool_name == "run_command" and result.get("exit_code", 0) != 0:
+                    collector.record_command_error(
+                        arguments.get("command", ""), result.get("exit_code", 1), result.get("output", ""),
+                    )
+
+            yield {
+                "event": "tool_use",
+                "data": json.dumps({"tool": tool_name, "arguments": arguments, "status": "done", "result": result}),
+            }
+
+            tool_results.append({
+                "type": "tool_result",
+                "tool_use_id": tc.get("id", f"tool_{_round}"),
+                "content": json.dumps(result),
+            })
+
+        msgs.append({"role": "user", "content": tool_results})
+
+    # Final streaming response
+    async for chunk in connector.stream_after_tools(msgs, system=tool_system):
+        yield {"event": "token", "data": json.dumps({"text": chunk.text, "done": chunk.done})}
 
 
 async def _pick_connector(mode: str, history: list[dict], conv: dict, http: httpx.AsyncClient, model: str | None = None):

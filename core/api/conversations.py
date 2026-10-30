@@ -16,6 +16,7 @@ router = APIRouter(prefix="/api")
 class ConversationUpdate(BaseModel):
     title: str | None = None
     mode: str | None = None
+    project_id: str | None = None
 
 
 @router.get("/conversations")
