@@ -6,9 +6,18 @@ import aiosqlite
 from core.config import DB_PATH, KITSUNE_DIR
 
 SCHEMA = """\
+CREATE TABLE IF NOT EXISTS projects (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    path TEXT NOT NULL UNIQUE,
+    icon TEXT,
+    created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+);
+
 CREATE TABLE IF NOT EXISTS conversations (
     id TEXT PRIMARY KEY,
     title TEXT NOT NULL DEFAULT 'New chat',
+    project_id TEXT REFERENCES projects(id) ON DELETE SET NULL,
     mode TEXT NOT NULL DEFAULT 'auto' CHECK (mode IN ('auto', 'local', 'cloud')),
     escalated INTEGER NOT NULL DEFAULT 0,
     summary TEXT,
@@ -87,10 +96,33 @@ class DBPool:
             await db.execute("PRAGMA foreign_keys=ON")
             self._connections.append(db)
             await self._available.put(db)
+        await self._migrate(self._connections[0])
         await self._connections[0].executescript(SCHEMA)
         await self._connections[0].executescript(
             "DROP TABLE IF EXISTS prs_fts; DROP TABLE IF EXISTS conversations_fts;"
         )
+
+    @staticmethod
+    async def _migrate(db: aiosqlite.Connection):
+        tables = [r[0] for r in await db.execute_fetchall("SELECT name FROM sqlite_master WHERE type='table'")]
+        if "conversations" not in tables:
+            return
+        # Ensure projects table exists before adding FK
+        if "projects" not in tables:
+            await db.execute(
+                """CREATE TABLE IF NOT EXISTS projects (
+                    id TEXT PRIMARY KEY,
+                    name TEXT NOT NULL,
+                    path TEXT NOT NULL UNIQUE,
+                    icon TEXT,
+                    created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+                )"""
+            )
+        cols = [r[1] for r in await db.execute_fetchall("PRAGMA table_info(conversations)")]
+        if "project_id" not in cols:
+            await db.execute("ALTER TABLE conversations ADD COLUMN project_id TEXT REFERENCES projects(id) ON DELETE SET NULL")
+            await db.execute("CREATE INDEX IF NOT EXISTS idx_conversations_project ON conversations(project_id)")
+            await db.commit()
 
     @asynccontextmanager
     async def acquire(self):

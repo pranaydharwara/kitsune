@@ -2,9 +2,19 @@ const BASE = window.location.protocol === 'tauri:'
   ? 'http://127.0.0.1:9848/api'
   : '/api';
 
+export interface Project {
+  id: string;
+  name: string;
+  path: string;
+  icon: string | null;
+  conversation_count: number;
+  created_at: string;
+}
+
 export interface Conversation {
   id: string;
   title: string;
+  project_id: string | null;
   mode: string;
   escalated: boolean;
   created_at: string;
@@ -29,6 +39,24 @@ export interface RouteInfo {
   reason: string;
 }
 
+export async function listProjects(): Promise<Project[]> {
+  const res = await fetch(`${BASE}/projects`);
+  return res.json();
+}
+
+export async function createProject(path: string, name?: string): Promise<Project> {
+  const res = await fetch(`${BASE}/projects`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ path, name }),
+  });
+  return res.json();
+}
+
+export async function deleteProject(id: string): Promise<void> {
+  await fetch(`${BASE}/projects/${id}`, { method: 'DELETE' });
+}
+
 export async function listConversations(): Promise<Conversation[]> {
   const res = await fetch(`${BASE}/conversations`);
   return res.json();
@@ -43,7 +71,7 @@ export async function deleteConversation(id: string): Promise<void> {
   await fetch(`${BASE}/conversations/${id}`, { method: 'DELETE' });
 }
 
-export async function updateConversation(id: string, fields: { title?: string; mode?: string }): Promise<void> {
+export async function updateConversation(id: string, fields: { title?: string; mode?: string; project_id?: string | null }): Promise<void> {
   await fetch(`${BASE}/conversations/${id}`, {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json' },
@@ -93,12 +121,21 @@ export async function listModels(): Promise<ModelsResponse> {
   return res.json();
 }
 
+export interface ToolUseEvent {
+  tool: string;
+  arguments: Record<string, unknown>;
+  status: 'running' | 'done';
+  result?: Record<string, unknown>;
+}
+
 export interface StreamCallbacks {
   onToken: (text: string) => void;
   onDone: (data: { message: Message; conversation_id: string; route?: RouteInfo; speed?: number }) => void;
   onError: (error: string) => void;
   onRoute?: (route: RouteInfo) => void;
   onCancelled?: () => void;
+  onToolUse?: (event: ToolUseEvent) => void;
+  onMentions?: (mentions: ResolvedMention[]) => void;
 }
 
 export interface Settings {
@@ -161,11 +198,59 @@ export async function importConversations(file: File): Promise<{ imported: numbe
   return res.json();
 }
 
+export interface MentionCompletion {
+  type: string;
+  value: string;
+  label: string;
+  detail?: string;
+}
+
+export interface ResolvedMention {
+  type: string;
+  arg: string;
+  status: 'ok' | 'not_found';
+}
+
+export interface FileSearchResult {
+  path: string;
+  name: string;
+  ext: string;
+  size: number;
+  is_dir: boolean;
+}
+
+export async function searchFiles(projectId: string, query: string): Promise<{ results: FileSearchResult[] }> {
+  const res = await fetch(`${BASE}/search/files`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ project_id: projectId, query, limit: 20 }),
+  });
+  return res.json();
+}
+
+export async function searchContent(projectId: string, query: string): Promise<{ results: { path: string; matches: { line: number; text: string }[] }[] }> {
+  const res = await fetch(`${BASE}/search/content`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ project_id: projectId, query, limit: 10 }),
+  });
+  return res.json();
+}
+
+export async function getMentionCompletions(query: string, projectId?: string): Promise<{ completions: MentionCompletion[] }> {
+  const res = await fetch(`${BASE}/mentions/complete`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ query, project_id: projectId || null }),
+  });
+  return res.json();
+}
+
 export function streamChat(
   message: string,
   conversationId: string | null,
   callbacks: StreamCallbacks,
-  options?: { mode?: string; model?: string; retryMessageId?: string; retryWith?: string },
+  options?: { mode?: string; model?: string; retryMessageId?: string; retryWith?: string; projectId?: string },
 ): AbortController {
   const controller = new AbortController();
 
@@ -175,6 +260,7 @@ export function streamChat(
     body: JSON.stringify({
       message,
       conversation_id: conversationId,
+      project_id: options?.projectId || null,
       mode: options?.mode || 'auto',
       model: options?.model || null,
       retry_message_id: options?.retryMessageId || null,
@@ -212,6 +298,10 @@ export function streamChat(
               callbacks.onDone(data);
             } else if (currentEvent === 'route') {
               callbacks.onRoute?.(data);
+            } else if (currentEvent === 'tool_use') {
+              callbacks.onToolUse?.(data as ToolUseEvent);
+            } else if (currentEvent === 'mentions') {
+              callbacks.onMentions?.(data as ResolvedMention[]);
             } else {
               if (data.text) {
                 callbacks.onToken(data.text);
