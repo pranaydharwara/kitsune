@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { ChevronDown, ChevronRight, FolderPlus, Plus, Search, Settings, Trash2, X } from 'lucide-react';
+import { ChevronDown, ChevronRight, FolderPlus, Plus, Search, Settings, Star, Trash2, X } from 'lucide-react';
 import type { Conversation, Project } from '../lib/api';
 
 interface SidebarProps {
@@ -11,6 +11,7 @@ interface SidebarProps {
   onSelect: (id: string) => void;
   onNew: () => void;
   onDelete: (id: string) => void;
+  onStar: (id: string, starred: boolean) => void;
   onOpenSettings: () => void;
   onAddProject: () => void;
   onAddProjectPath: (path: string) => void;
@@ -28,6 +29,7 @@ export function Sidebar({
   onSelect,
   onNew,
   onDelete,
+  onStar,
   onOpenSettings,
   onAddProject,
   onAddProjectPath,
@@ -165,6 +167,7 @@ export function Sidebar({
                       isActive={conv.id === activeId}
                       onSelect={onSelect}
                       onDelete={onDelete}
+                      onStar={onStar}
                     />
                   ))}
                   {projectConvs.length === 0 && !query && (
@@ -226,6 +229,7 @@ export function Sidebar({
                 isActive={conv.id === activeId}
                 onSelect={onSelect}
                 onDelete={onDelete}
+                onStar={onStar}
               />
             ))}
           </>
@@ -275,11 +279,13 @@ function ConversationItem({
   isActive,
   onSelect,
   onDelete,
+  onStar,
 }: {
   conv: Conversation;
   isActive: boolean;
   onSelect: (id: string) => void;
   onDelete: (id: string) => void;
+  onStar: (id: string, starred: boolean) => void;
 }) {
   return (
     <div
@@ -291,17 +297,33 @@ function ConversationItem({
         fontWeight: isActive ? 500 : 400,
       }}
     >
+      {conv.starred && (
+        <Star size={11} fill="var(--accent)" style={{ color: 'var(--accent)', flexShrink: 0 }} />
+      )}
       <span className="truncate flex-1">{conv.title}</span>
-      <button
-        onClick={(e) => {
-          e.stopPropagation();
-          onDelete(conv.id);
-        }}
-        className="opacity-0 group-hover:opacity-100 transition-opacity p-1 rounded cursor-pointer"
-        style={{ color: 'var(--text-muted)' }}
-      >
-        <Trash2 size={13} />
-      </button>
+      <span className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            onStar(conv.id, !conv.starred);
+          }}
+          className="p-1 rounded cursor-pointer"
+          style={{ color: conv.starred ? 'var(--accent)' : 'var(--text-muted)' }}
+          title={conv.starred ? 'Unstar' : 'Star'}
+        >
+          <Star size={12} fill={conv.starred ? 'currentColor' : 'none'} />
+        </button>
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            onDelete(conv.id);
+          }}
+          className="p-1 rounded cursor-pointer"
+          style={{ color: 'var(--text-muted)' }}
+        >
+          <Trash2 size={13} />
+        </button>
+      </span>
     </div>
   );
 }

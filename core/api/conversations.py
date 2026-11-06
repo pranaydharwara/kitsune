@@ -8,7 +8,7 @@ from core.store.conversations import (
     list_conversations,
     update_conversation,
 )
-from core.store.messages import get_messages
+from core.store.messages import delete_messages_after, get_messages, update_message
 
 router = APIRouter(prefix="/api")
 
@@ -17,6 +17,11 @@ class ConversationUpdate(BaseModel):
     title: str | None = None
     mode: str | None = None
     project_id: str | None = None
+    starred: bool | None = None
+
+
+class EditMessageRequest(BaseModel):
+    text: str
 
 
 @router.get("/conversations")
@@ -50,6 +55,8 @@ async def get_conv_messages(conversation_id: str, request: Request, limit: int =
 async def update_conv(conversation_id: str, body: ConversationUpdate, request: Request):
     async with request.app.state.db_pool.acquire() as db:
         fields = body.model_dump(exclude_none=True)
+        if "starred" in fields:
+            fields["starred"] = int(fields["starred"])
         await update_conversation(db, conversation_id, **fields)
         return {"ok": True}
 
@@ -59,3 +66,11 @@ async def delete_conv(conversation_id: str, request: Request):
     async with request.app.state.db_pool.acquire() as db:
         await delete_conversation(db, conversation_id)
         return {"ok": True}
+
+
+@router.put("/conversations/{conversation_id}/messages/{message_id}")
+async def edit_message(conversation_id: str, message_id: str, body: EditMessageRequest, request: Request):
+    async with request.app.state.db_pool.acquire() as db:
+        deleted = await delete_messages_after(db, conversation_id, message_id)
+        await update_message(db, message_id, text=body.text)
+        return {"ok": True, "deleted_after": deleted}

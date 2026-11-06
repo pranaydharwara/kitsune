@@ -54,6 +54,21 @@ async def get_messages(
     return [dict(r) for r in rows]
 
 
+async def delete_messages_after(db: aiosqlite.Connection, conversation_id: str, message_id: str) -> int:
+    row = await db.execute_fetchall(
+        "SELECT created_at FROM messages WHERE id = ?", (message_id,)
+    )
+    if not row:
+        return 0
+    created_at = row[0][0]
+    cursor = await db.execute(
+        "DELETE FROM messages WHERE conversation_id = ? AND created_at > ?",
+        (conversation_id, created_at),
+    )
+    await db.commit()
+    return cursor.rowcount
+
+
 async def update_message(db: aiosqlite.Connection, message_id: str, **fields) -> None:
     allowed = {"text", "answered_by", "latency_ms", "tokens_in", "tokens_out", "cost_usd"}
     updates = {k: v for k, v in fields.items() if k in allowed}

@@ -22,18 +22,18 @@ async def create_conversation(db: aiosqlite.Connection, title: str = "New chat",
 async def list_conversations(db: aiosqlite.Connection, limit: int = 50, project_id: str | None = None) -> list[dict]:
     if project_id is not None:
         rows = await db.execute_fetchall(
-            """SELECT c.id, c.title, c.project_id, c.mode, c.escalated, c.created_at,
+            """SELECT c.id, c.title, c.project_id, c.mode, c.escalated, c.starred, c.created_at,
                       (SELECT text FROM messages WHERE conversation_id = c.id
                        ORDER BY created_at DESC LIMIT 1) as last_message
-               FROM conversations c WHERE c.project_id = ? ORDER BY c.created_at DESC LIMIT ?""",
+               FROM conversations c WHERE c.project_id = ? ORDER BY c.starred DESC, c.created_at DESC LIMIT ?""",
             (project_id, limit),
         )
     else:
         rows = await db.execute_fetchall(
-            """SELECT c.id, c.title, c.project_id, c.mode, c.escalated, c.created_at,
+            """SELECT c.id, c.title, c.project_id, c.mode, c.escalated, c.starred, c.created_at,
                       (SELECT text FROM messages WHERE conversation_id = c.id
                        ORDER BY created_at DESC LIMIT 1) as last_message
-               FROM conversations c ORDER BY c.created_at DESC LIMIT ?""",
+               FROM conversations c ORDER BY c.starred DESC, c.created_at DESC LIMIT ?""",
             (limit,),
         )
     return [dict(r) for r in rows]
@@ -49,7 +49,7 @@ async def get_conversation(db: aiosqlite.Connection, conversation_id: str) -> di
 async def update_conversation(
     db: aiosqlite.Connection, conversation_id: str, **fields
 ) -> None:
-    allowed = {"title", "mode", "escalated", "summary", "summary_updated_at", "project_id"}
+    allowed = {"title", "mode", "escalated", "starred", "summary", "summary_updated_at", "project_id"}
     updates = {k: v for k, v in fields.items() if k in allowed}
     if not updates:
         return

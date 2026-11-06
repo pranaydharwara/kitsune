@@ -11,6 +11,7 @@ import {
   createProject,
   deleteConversation,
   deleteProject,
+  editMessage,
   getMessages,
   listConversations,
   listModels,
@@ -147,6 +148,19 @@ export default function App() {
 
   const handleSelectProject = (id: string | null) => {
     setActiveProjectId(id);
+  };
+
+  const handleStar = async (id: string, starred: boolean) => {
+    await updateConversation(id, { starred });
+    refreshConversations();
+  };
+
+  const handleEdit = async (messageId: string, newText: string) => {
+    if (!activeId) return;
+    await editMessage(activeId, messageId, newText);
+    const msgs = await getMessages(activeId);
+    setMessages(msgs);
+    handleSend(newText);
   };
 
   const handleSend = (text: string) => {
@@ -303,6 +317,7 @@ export default function App() {
         onSelect={setActiveId}
         onNew={handleNewChat}
         onDelete={handleDelete}
+        onStar={handleStar}
         onOpenSettings={() => setSettingsOpen(true)}
         onAddProject={handleAddProject}
         onAddProjectPath={handleAddProjectPath}
@@ -321,6 +336,7 @@ export default function App() {
           toolEvents={toolEvents}
           resolvedMentions={mentionContext?.items || []}
           onRetry={handleRetry}
+          onEdit={handleEdit}
         />
         {activeProjectId && !activeId && (
           <div className="px-6">

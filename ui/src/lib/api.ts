@@ -17,6 +17,7 @@ export interface Conversation {
   project_id: string | null;
   mode: string;
   escalated: boolean;
+  starred: boolean;
   created_at: string;
   last_message?: string;
 }
@@ -71,11 +72,19 @@ export async function deleteConversation(id: string): Promise<void> {
   await fetch(`${BASE}/conversations/${id}`, { method: 'DELETE' });
 }
 
-export async function updateConversation(id: string, fields: { title?: string; mode?: string; project_id?: string | null }): Promise<void> {
+export async function updateConversation(id: string, fields: { title?: string; mode?: string; project_id?: string | null; starred?: boolean }): Promise<void> {
   await fetch(`${BASE}/conversations/${id}`, {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(fields),
+  });
+}
+
+export async function editMessage(conversationId: string, messageId: string, text: string): Promise<void> {
+  await fetch(`${BASE}/conversations/${conversationId}/messages/${messageId}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ text }),
   });
 }
 

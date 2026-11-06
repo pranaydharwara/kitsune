@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Check, Copy, ThumbsUp, ThumbsDown, FileText, Terminal, FolderOpen, Eye, Loader2, AtSign, AlertCircle } from 'lucide-react';
+import { Check, Copy, Pencil, ThumbsUp, ThumbsDown, FileText, Terminal, FolderOpen, Eye, Loader2, AtSign, AlertCircle } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import type { Message, ResolvedMention, RouteInfo, ToolUseEvent } from '../lib/api';
@@ -15,9 +15,10 @@ interface ChatThreadProps {
   toolEvents: ToolUseEvent[];
   resolvedMentions: ResolvedMention[];
   onRetry: (messageId: string, retryWith: 'local' | 'cloud') => void;
+  onEdit: (messageId: string, newText: string) => void;
 }
 
-export function ChatThread({ messages, streamingText, isStreaming, error, routeInfo, speed: _speed, toolEvents, resolvedMentions, onRetry }: ChatThreadProps) {
+export function ChatThread({ messages, streamingText, isStreaming, error, routeInfo, speed: _speed, toolEvents, resolvedMentions, onRetry, onEdit }: ChatThreadProps) {
   const bottomRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -75,7 +76,7 @@ export function ChatThread({ messages, streamingText, isStreaming, error, routeI
     <div className="flex-1 overflow-y-auto">
       <div className="max-w-[720px] mx-auto px-6 py-8">
         {messages.map((msg) => (
-          <MessageBubble key={msg.id} message={msg} onRetry={onRetry} />
+          <MessageBubble key={msg.id} message={msg} onRetry={onRetry} onEdit={onEdit} />
         ))}
         {isStreaming && (
           <div className="mb-8">
@@ -353,10 +354,32 @@ function extractText(node: React.ReactNode): string {
   return '';
 }
 
-function MessageBubble({ message, onRetry }: { message: Message; onRetry: (id: string, retryWith: 'local' | 'cloud') => void }) {
+function MessageBubble({ message, onRetry, onEdit }: { message: Message; onRetry: (id: string, retryWith: 'local' | 'cloud') => void; onEdit: (id: string, newText: string) => void }) {
   const isUser = message.role === 'user';
   const isCloud = message.answered_by?.startsWith('claude');
   const isLocal = message.answered_by?.startsWith('local');
+  const [editing, setEditing] = useState(false);
+  const [editText, setEditText] = useState(message.text);
+  const editRef = useRef<HTMLTextAreaElement>(null);
+
+  useEffect(() => {
+    if (editing && editRef.current) {
+      editRef.current.focus();
+      editRef.current.style.height = 'auto';
+      editRef.current.style.height = editRef.current.scrollHeight + 'px';
+    }
+  }, [editing]);
+
+  const handleEditSubmit = () => {
+    const trimmed = editText.trim();
+    if (!trimmed || trimmed === message.text) {
+      setEditing(false);
+      setEditText(message.text);
+      return;
+    }
+    setEditing(false);
+    onEdit(message.id, trimmed);
+  };
 
   return (
     <div className={`group mb-8 ${isUser ? 'flex justify-end' : ''}`}>
@@ -365,9 +388,55 @@ function MessageBubble({ message, onRetry }: { message: Message; onRetry: (id: s
         style={isUser ? { background: 'var(--msg-user-bg)' } : {}}
       >
         {isUser ? (
-          <div className="whitespace-pre-wrap" style={{ color: 'var(--text-primary)', fontSize: '15px', lineHeight: '1.6' }}>
-            {message.text}
-          </div>
+          editing ? (
+            <div>
+              <textarea
+                ref={editRef}
+                value={editText}
+                onChange={(e) => {
+                  setEditText(e.target.value);
+                  e.target.style.height = 'auto';
+                  e.target.style.height = e.target.scrollHeight + 'px';
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleEditSubmit(); }
+                  if (e.key === 'Escape') { setEditing(false); setEditText(message.text); }
+                }}
+                className="w-full resize-none bg-transparent outline-none"
+                style={{ color: 'var(--text-primary)', fontSize: '15px', lineHeight: '1.6', minHeight: '24px' }}
+              />
+              <div className="flex gap-2 mt-2 justify-end">
+                <button
+                  onClick={() => { setEditing(false); setEditText(message.text); }}
+                  className="px-3 py-1 rounded-full text-xs cursor-pointer"
+                  style={{ color: 'var(--text-muted)' }}
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleEditSubmit}
+                  className="px-3 py-1 rounded-full text-xs cursor-pointer"
+                  style={{ background: 'var(--accent)', color: '#fff' }}
+                >
+                  Send
+                </button>
+              </div>
+            </div>
+          ) : (
+            <div className="relative">
+              <div className="whitespace-pre-wrap" style={{ color: 'var(--text-primary)', fontSize: '15px', lineHeight: '1.6' }}>
+                {message.text}
+              </div>
+              <button
+                onClick={() => setEditing(true)}
+                className="absolute -bottom-1 -right-1 p-1 rounded-md cursor-pointer transition-all active:scale-[0.9] opacity-0 group-hover:opacity-100"
+                style={{ color: 'var(--text-muted)', background: 'var(--bg-secondary)', border: '1px solid var(--border-light)' }}
+                title="Edit message"
+              >
+                <Pencil size={11} />
+              </button>
+            </div>
+          )
         ) : (
           <div className="markdown-body" style={{ color: 'var(--text-primary)', fontSize: '15px', lineHeight: '1.6' }}>
             <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>{message.text}</ReactMarkdown>

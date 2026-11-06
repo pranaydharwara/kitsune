@@ -20,6 +20,7 @@ CREATE TABLE IF NOT EXISTS conversations (
     project_id TEXT REFERENCES projects(id) ON DELETE SET NULL,
     mode TEXT NOT NULL DEFAULT 'auto' CHECK (mode IN ('auto', 'local', 'cloud')),
     escalated INTEGER NOT NULL DEFAULT 0,
+    starred INTEGER NOT NULL DEFAULT 0,
     summary TEXT,
     summary_updated_at TEXT,
     created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
@@ -122,6 +123,9 @@ class DBPool:
         if "project_id" not in cols:
             await db.execute("ALTER TABLE conversations ADD COLUMN project_id TEXT REFERENCES projects(id) ON DELETE SET NULL")
             await db.execute("CREATE INDEX IF NOT EXISTS idx_conversations_project ON conversations(project_id)")
+            await db.commit()
+        if "starred" not in cols:
+            await db.execute("ALTER TABLE conversations ADD COLUMN starred INTEGER NOT NULL DEFAULT 0")
             await db.commit()
 
     @asynccontextmanager

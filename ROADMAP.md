@@ -23,9 +23,9 @@ A Claude-quality chat experience that runs local models on your Mac — with clo
 Close the gap between Kitsune's chat experience and Claude's. Local model on top, cloud-level polish.
 
 ### Conversation features
-- [ ] Edit and re-send a previous message
+- [x] Edit and re-send a previous message
 - [ ] Branching / fork a conversation from any message
-- [ ] Conversation starring / pinning
+- [x] Conversation starring / pinning
 - [x] Keyboard shortcuts (Cmd+N new chat, Cmd+K search, Cmd+/ settings, Cmd+M cycle mode)
 - [ ] Drag to reorder sidebar projects
 
@@ -38,7 +38,7 @@ Close the gap between Kitsune's chat experience and Claude's. Local model on top
 ### Composer
 - [ ] Attach files/images to messages (drag-and-drop)
 - [ ] Paste image from clipboard
-- [ ] Shift+Enter for newlines, Enter to send (configurable)
+- [x] Shift+Enter for newlines, Enter to send (configurable)
 - [ ] Prompt templates / quick actions
 
 ---
