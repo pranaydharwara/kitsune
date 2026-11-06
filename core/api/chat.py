@@ -208,9 +208,17 @@ async def chat(req: ChatRequest, request: Request):
                 "data": json.dumps(resolved_mentions),
             }
 
+        route_data: dict = {"source": source, "reason": route_reason}
+        if isinstance(connector, (ClaudeSdkConnector, ClaudeCliConnector)):
+            hist_chars = sum(len(m["text"]) for m in history)
+            est_tokens_in = hist_chars // 4
+            est_cost = _estimate_cost(connector.model, est_tokens_in, 1000)
+            if est_cost is not None:
+                route_data["estimated_cost"] = est_cost
+
         yield {
             "event": "route",
-            "data": json.dumps({"source": source, "reason": route_reason}),
+            "data": json.dumps(route_data),
         }
 
         cancelled = False

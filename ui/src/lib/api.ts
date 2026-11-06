@@ -38,6 +38,7 @@ export interface Message {
 export interface RouteInfo {
   source: string;
   reason: string;
+  estimated_cost?: number;
 }
 
 export async function listProjects(): Promise<Project[]> {

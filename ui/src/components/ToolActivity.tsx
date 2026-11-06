@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Check, ChevronDown, ChevronRight, FileText, Terminal, FolderOpen, Eye, Loader2, X, AlertCircle } from 'lucide-react';
 import type { ToolUseEvent } from '../lib/api';
 
@@ -48,12 +48,35 @@ export function ToolActivity({ events, open, onClose }: ToolActivityProps) {
         </button>
       </div>
 
-      <div className="flex-1 overflow-y-auto px-3 py-3 flex flex-col gap-2">
-        {events.map((evt, i) => (
-          <ToolEventCard key={i} event={evt} />
-        ))}
-      </div>
+      <ToolEventList events={events} />
     </aside>
+  );
+}
+
+function ToolEventList({ events }: { events: ToolUseEvent[] }) {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const isNearBottom = useRef(true);
+
+  useEffect(() => {
+    const el = containerRef.current;
+    if (el && isNearBottom.current) {
+      el.scrollTop = el.scrollHeight;
+    }
+  }, [events]);
+
+  const handleScroll = () => {
+    const el = containerRef.current;
+    if (el) {
+      isNearBottom.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
+    }
+  };
+
+  return (
+    <div ref={containerRef} onScroll={handleScroll} className="flex-1 overflow-y-auto px-3 py-3 flex flex-col gap-2">
+      {events.map((evt, i) => (
+        <ToolEventCard key={i} event={evt} />
+      ))}
+    </div>
   );
 }
 

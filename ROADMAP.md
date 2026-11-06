@@ -63,7 +63,7 @@ Make the local model smarter by giving it the right context automatically.
 - [x] Routing confidence display (show why auto picked local vs cloud)
 - [x] Per-conversation model lock
 - [x] Token usage per-conversation breakdown
-- [ ] Cost estimation before cloud calls
+- [x] Cost estimation before cloud calls
 
 ---
 
@@ -75,7 +75,7 @@ Bring agentic capabilities closer to Claude Code level.
 - [ ] Multi-step tool chains (plan → execute → verify)
 - [ ] Approval gate before destructive tool actions (rm, overwrite)
 - [ ] Tool output streaming (show partial results as tools run)
-- [ ] Fix: tool activity panel scroll jumps on new events
+- [x] Fix: tool activity panel scroll jumps on new events
 
 ### New tools
 - [ ] Terminal integration (persistent shell session)

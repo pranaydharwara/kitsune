@@ -136,7 +136,11 @@ export function ChatThread({ messages, streamingText, isStreaming, error, routeI
 
 function RouteBadge({ route }: { route: RouteInfo }) {
   const isCloud = route.source.startsWith('claude');
-  const modelName = route.source.split(':')[1] || route.source;
+  const costLabel = route.estimated_cost != null
+    ? route.estimated_cost < 0.01
+      ? `~$${(route.estimated_cost * 100).toFixed(1)}¢`
+      : `~$${route.estimated_cost.toFixed(2)}`
+    : null;
   return (
     <span
       className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs"
@@ -151,6 +155,12 @@ function RouteBadge({ route }: { route: RouteInfo }) {
       <span style={{ fontWeight: 500 }}>{isCloud ? 'Claude' : 'Local'}</span>
       <span style={{ opacity: 0.6 }}>·</span>
       <span>{route.reason}</span>
+      {costLabel && (
+        <>
+          <span style={{ opacity: 0.6 }}>·</span>
+          <span style={{ fontWeight: 500, color: 'var(--accent)' }}>{costLabel}</span>
+        </>
+      )}
     </span>
   );
 }
