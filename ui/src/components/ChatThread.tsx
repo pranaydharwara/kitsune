@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Check, Copy, GitBranch, GitFork, Pencil, ThumbsUp, ThumbsDown, FileText, Terminal, FolderOpen, Eye, Loader2, AtSign, AlertCircle } from 'lucide-react';
+import { Check, CheckCircle2, Copy, GitBranch, GitFork, ListChecks, Pencil, ThumbsUp, ThumbsDown, FileText, Terminal, FolderOpen, Eye, Loader2, AtSign, AlertCircle } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import remarkMath from 'remark-math';
@@ -192,6 +192,8 @@ const TOOL_ICONS: Record<string, typeof FileText> = {
   list_files: FolderOpen,
   run_command: Terminal,
   git_operation: GitBranch,
+  think: ListChecks,
+  verify: CheckCircle2,
 };
 
 const TOOL_LABELS: Record<string, string> = {
@@ -200,6 +202,8 @@ const TOOL_LABELS: Record<string, string> = {
   list_files: 'Listing',
   run_command: 'Running',
   git_operation: 'Git',
+  think: 'Planning',
+  verify: 'Verifying',
 };
 
 function ToolEventBadge({ event }: { event: ToolUseEvent }) {

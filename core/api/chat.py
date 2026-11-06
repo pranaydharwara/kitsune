@@ -423,15 +423,18 @@ _TOOL_TAG_OPEN = "<tool_call>"
 _TOOL_TAG_CLOSE = "</tool_call>"
 _TOOL_CALL_RE = re.compile(r"<tool_call>\s*(\{.*?\})\s*</tool_call>", re.DOTALL)
 
-MAX_TOOL_ROUNDS = 5
+MAX_TOOL_ROUNDS = 10
 
 TOOL_SYSTEM_SUFFIX = (
     "\n\nYou have tools to interact with the project files directly. "
     "IMPORTANT: When the user asks you to create, write, edit, or run something, "
     "you MUST use the tools — do NOT just show code in a code block. "
     "Use create_file to make files, run_command to execute commands, "
-    "read_file to read files, list_files to browse directories. "
-    "After using tools, briefly confirm what you did."
+    "read_file to read files, list_files to browse directories, "
+    "git_operation for git tasks. "
+    "For complex tasks that require multiple steps, use the think tool FIRST "
+    "to plan your approach, then execute each step, and finally use verify "
+    "to confirm the results. After using tools, briefly confirm what you did."
 )
 
 
@@ -533,6 +536,30 @@ def _tool_summary(tool_name: str, arguments: dict, result: dict) -> str:
         if len(entries) > 30:
             listing += f"\n... ({len(entries)} total)"
         return f"**Listed** `{path}`\n```\n{listing}\n```"
+
+    if tool_name == "git_operation":
+        op = arguments.get("operation", "?")
+        output = result.get("output", "").strip()
+        code = result.get("exit_code", 0)
+        parts = [f"**Git {op}**"]
+        if code != 0:
+            parts[0] += f" — exit code {code}"
+        if output:
+            preview = output[:500] + ("..." if len(output) > 500 else "")
+            parts.append(f"\n```\n{preview}\n```")
+        return "".join(parts)
+
+    if tool_name == "think":
+        steps = result.get("steps", [])
+        step_list = "\n".join(f"{i+1}. {s}" for i, s in enumerate(steps))
+        return f"**Plan** ({len(steps)} steps)\n{step_list}"
+
+    if tool_name == "verify":
+        check = arguments.get("check", "?")
+        verdict = result.get("result", "?")
+        icon = {"pass": "✓", "fail": "✗", "partial": "~"}.get(verdict, "?")
+        details = result.get("details", "")
+        return f"**Verify** {icon} {check}" + (f" — {details}" if details else "")
 
     return f"**Used** {tool_name}"
 

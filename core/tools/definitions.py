@@ -102,6 +102,54 @@ TOOL_SCHEMAS = [
             },
         },
     },
+    {
+        "type": "function",
+        "function": {
+            "name": "think",
+            "description": "Plan your approach before taking action. Use this FIRST when a task requires multiple steps — outline what you will do, then execute each step with the other tools.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "plan": {
+                        "type": "string",
+                        "description": "Your reasoning and overall approach",
+                    },
+                    "steps": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "Concrete steps you will execute in order",
+                    },
+                },
+                "required": ["plan", "steps"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "verify",
+            "description": "Verify the results of your previous actions. Use this after completing a multi-step task to confirm everything worked correctly.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "check": {
+                        "type": "string",
+                        "description": "What you are verifying",
+                    },
+                    "result": {
+                        "type": "string",
+                        "enum": ["pass", "fail", "partial"],
+                        "description": "Verification outcome",
+                    },
+                    "details": {
+                        "type": "string",
+                        "description": "Details about what passed or failed",
+                    },
+                },
+                "required": ["check", "result"],
+            },
+        },
+    },
 ]
 
 IGNORE_DIRS = {".git", "node_modules", "__pycache__", ".venv", "venv", "target", "dist", "build", ".next"}
@@ -129,6 +177,11 @@ def execute_tool(name: str, arguments: dict, project_path: str) -> dict:
         return _run_command(project_path, arguments.get("command", ""))
     elif name == "git_operation":
         return _git_operation(project_path, arguments.get("operation", ""), arguments.get("args", ""))
+    elif name == "think":
+        steps = arguments.get("steps", [])
+        return {"plan": arguments.get("plan", ""), "steps": steps, "step_count": len(steps)}
+    elif name == "verify":
+        return {"check": arguments.get("check", ""), "result": arguments.get("result", ""), "details": arguments.get("details", "")}
     else:
         return {"error": f"Unknown tool: {name}"}
 

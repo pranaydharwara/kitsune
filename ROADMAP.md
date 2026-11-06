@@ -72,7 +72,7 @@ Make the local model smarter by giving it the right context automatically.
 Bring agentic capabilities closer to Claude Code level.
 
 ### Agent improvements
-- [ ] Multi-step tool chains (plan → execute → verify)
+- [x] Multi-step tool chains (plan → execute → verify)
 - [ ] Approval gate before destructive tool actions (rm, overwrite)
 - [x] Tool output streaming (show partial results as tools run)
 - [x] Fix: tool activity panel scroll jumps on new events
