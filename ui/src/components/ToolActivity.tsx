@@ -134,7 +134,7 @@ function ToolEventCard({ event }: { event: ToolUseEvent }) {
           className="px-3 pb-3"
           style={{ borderTop: '1px solid var(--border-light)' }}
         >
-          {event.tool === 'think' && event.arguments.steps && (
+          {event.tool === 'think' && Array.isArray(event.arguments.steps) && (
             <div className="mt-2">
               <div className="text-[10px] uppercase tracking-wider mb-1" style={{ color: 'var(--text-muted)' }}>
                 Plan
@@ -162,7 +162,7 @@ function ToolEventCard({ event }: { event: ToolUseEvent }) {
                 <span style={{ fontWeight: 600 }}>
                   {event.result.result === 'pass' ? '✓ Pass' : event.result.result === 'fail' ? '✗ Fail' : '~ Partial'}
                 </span>
-                {event.result.details && <span className="ml-1">— {String(event.result.details)}</span>}
+                {event.result.details ? <span className="ml-1">— {String(event.result.details)}</span> : null}
               </div>
             </div>
           )}

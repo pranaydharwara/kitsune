@@ -310,7 +310,7 @@ function ConversationItem({
         fontWeight: isActive ? 500 : 400,
       }}
     >
-      {conv.starred && (
+      {!!conv.starred && (
         <Star size={11} fill="var(--accent)" style={{ color: 'var(--accent)', flexShrink: 0 }} />
       )}
       <span className="truncate flex-1">{conv.title}</span>
