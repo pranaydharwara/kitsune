@@ -59,6 +59,41 @@ async def update_conversation(
     await db.commit()
 
 
+async def fork_conversation(db: aiosqlite.Connection, conversation_id: str, up_to_message_id: str) -> dict:
+    conv = await get_conversation(db, conversation_id)
+    if not conv:
+        raise ValueError("Conversation not found")
+
+    msg_row = await db.execute_fetchall(
+        "SELECT created_at FROM messages WHERE id = ?", (up_to_message_id,)
+    )
+    if not msg_row:
+        raise ValueError("Message not found")
+    cutoff = msg_row[0][0]
+
+    new_id = uuid.uuid4().hex[:12]
+    now = _now()
+    title = f"{conv['title']} (fork)"
+    await db.execute(
+        "INSERT INTO conversations (id, title, project_id, mode, model_id, created_at) VALUES (?, ?, ?, ?, ?, ?)",
+        (new_id, title, conv.get("project_id"), conv.get("mode", "auto"), conv.get("model_id"), now),
+    )
+
+    messages = await db.execute_fetchall(
+        "SELECT role, text, answered_by, latency_ms, tokens_in, tokens_out, cost_usd FROM messages WHERE conversation_id = ? AND created_at <= ? ORDER BY created_at ASC",
+        (conversation_id, cutoff),
+    )
+    for msg in messages:
+        mid = uuid.uuid4().hex[:16]
+        await db.execute(
+            "INSERT INTO messages (id, conversation_id, role, text, answered_by, latency_ms, tokens_in, tokens_out, cost_usd, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (mid, new_id, msg[0], msg[1], msg[2], msg[3], msg[4], msg[5], msg[6], _now()),
+        )
+
+    await db.commit()
+    return {"id": new_id, "title": title, "project_id": conv.get("project_id"), "mode": conv.get("mode", "auto"), "created_at": now}
+
+
 async def delete_conversation(db: aiosqlite.Connection, conversation_id: str) -> None:
     await db.execute("DELETE FROM conversations WHERE id = ?", (conversation_id,))
     await db.commit()

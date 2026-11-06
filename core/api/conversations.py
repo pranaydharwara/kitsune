@@ -4,6 +4,7 @@ from pydantic import BaseModel
 from core.store.conversations import (
     create_conversation,
     delete_conversation,
+    fork_conversation,
     get_conversation,
     list_conversations,
     update_conversation,
@@ -23,6 +24,10 @@ class ConversationUpdate(BaseModel):
 
 class EditMessageRequest(BaseModel):
     text: str
+
+
+class ForkRequest(BaseModel):
+    message_id: str
 
 
 @router.get("/conversations")
@@ -93,3 +98,13 @@ async def edit_message(conversation_id: str, message_id: str, body: EditMessageR
         deleted = await delete_messages_after(db, conversation_id, message_id)
         await update_message(db, message_id, text=body.text)
         return {"ok": True, "deleted_after": deleted}
+
+
+@router.post("/conversations/{conversation_id}/fork")
+async def fork_conv(conversation_id: str, body: ForkRequest, request: Request):
+    async with request.app.state.db_pool.acquire() as db:
+        try:
+            result = await fork_conversation(db, conversation_id, body.message_id)
+        except ValueError as e:
+            raise HTTPException(status_code=404, detail=str(e))
+        return result

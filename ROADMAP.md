@@ -24,7 +24,7 @@ Close the gap between Kitsune's chat experience and Claude's. Local model on top
 
 ### Conversation features
 - [x] Edit and re-send a previous message
-- [ ] Branching / fork a conversation from any message
+- [x] Branching / fork a conversation from any message
 - [x] Conversation starring / pinning
 - [x] Keyboard shortcuts (Cmd+N new chat, Cmd+K search, Cmd+/ settings, Cmd+M cycle mode)
 - [ ] Drag to reorder sidebar projects
@@ -49,7 +49,7 @@ Make the local model smarter by giving it the right context automatically.
 
 ### Project awareness
 - [x] Instruction files (`.kitsune/instructions.md`) per-project
-- [ ] Persist context panel state across conversations
+- [x] Persist context panel state across conversations
 - [ ] @mention autocomplete for files outside current project
 - [ ] Fix: context indexing stalls on large repos (>10k files)
 

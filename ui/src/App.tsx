@@ -13,6 +13,7 @@ import {
   deleteConversation,
   deleteProject,
   editMessage,
+  forkConversation,
   getMessages,
   listConversations,
   listModels,
@@ -38,10 +39,22 @@ export default function App() {
   const [instructionsProjectId, setInstructionsProjectId] = useState<string | null>(null);
   const [speed, setSpeed] = useState<number | null>(null);
   const [toolEvents, setToolEvents] = useState<ToolUseEvent[]>([]);
-  const [toolPanelOpen, setToolPanelOpen] = useState(false);
+  const [toolPanelOpen, setToolPanelOpen] = useState(() => {
+    try { return localStorage.getItem('kitsune:toolPanelOpen') === '1'; } catch { return false; }
+  });
   const [mentionContext, setMentionContext] = useState<MentionContext | null>(null);
-  const [contextPanelOpen, setContextPanelOpen] = useState(false);
+  const [contextPanelOpen, setContextPanelOpen] = useState(() => {
+    try { return localStorage.getItem('kitsune:contextPanelOpen') === '1'; } catch { return false; }
+  });
   const abortRef = useRef<AbortController | null>(null);
+
+  useEffect(() => {
+    try { localStorage.setItem('kitsune:toolPanelOpen', toolPanelOpen ? '1' : '0'); } catch {}
+  }, [toolPanelOpen]);
+
+  useEffect(() => {
+    try { localStorage.setItem('kitsune:contextPanelOpen', contextPanelOpen ? '1' : '0'); } catch {}
+  }, [contextPanelOpen]);
 
   const refreshConversations = useCallback(async () => {
     try {
@@ -163,6 +176,13 @@ export default function App() {
     const msgs = await getMessages(activeId);
     setMessages(msgs);
     handleSend(newText);
+  };
+
+  const handleFork = async (messageId: string) => {
+    if (!activeId) return;
+    const result = await forkConversation(activeId, messageId);
+    await refreshConversations();
+    setActiveId(result.id);
   };
 
   const handleSend = (text: string) => {
@@ -340,6 +360,7 @@ export default function App() {
           resolvedMentions={mentionContext?.items || []}
           onRetry={handleRetry}
           onEdit={handleEdit}
+          onFork={handleFork}
           onSend={handleSend}
         />
         {activeProjectId && !activeId && (

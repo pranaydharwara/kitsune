@@ -81,6 +81,15 @@ export async function updateConversation(id: string, fields: { title?: string; m
   });
 }
 
+export async function forkConversation(conversationId: string, messageId: string): Promise<{ id: string; title: string }> {
+  const res = await fetch(`${BASE}/conversations/${conversationId}/fork`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ message_id: messageId }),
+  });
+  return res.json();
+}
+
 export async function editMessage(conversationId: string, messageId: string, text: string): Promise<void> {
   await fetch(`${BASE}/conversations/${conversationId}/messages/${messageId}`, {
     method: 'PUT',

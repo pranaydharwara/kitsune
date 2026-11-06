@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Check, Copy, Pencil, ThumbsUp, ThumbsDown, FileText, Terminal, FolderOpen, Eye, Loader2, AtSign, AlertCircle } from 'lucide-react';
+import { Check, Copy, GitFork, Pencil, ThumbsUp, ThumbsDown, FileText, Terminal, FolderOpen, Eye, Loader2, AtSign, AlertCircle } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import remarkMath from 'remark-math';
@@ -18,10 +18,11 @@ interface ChatThreadProps {
   resolvedMentions: ResolvedMention[];
   onRetry: (messageId: string, retryWith: 'local' | 'cloud') => void;
   onEdit: (messageId: string, newText: string) => void;
+  onFork?: (messageId: string) => void;
   onSend?: (text: string) => void;
 }
 
-export function ChatThread({ messages, streamingText, isStreaming, error, routeInfo, speed: _speed, toolEvents, resolvedMentions, onRetry, onEdit, onSend }: ChatThreadProps) {
+export function ChatThread({ messages, streamingText, isStreaming, error, routeInfo, speed: _speed, toolEvents, resolvedMentions, onRetry, onEdit, onFork, onSend }: ChatThreadProps) {
   const bottomRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -80,7 +81,7 @@ export function ChatThread({ messages, streamingText, isStreaming, error, routeI
     <div className="flex-1 overflow-y-auto">
       <div className="max-w-[720px] mx-auto px-6 py-8">
         {messages.map((msg) => (
-          <MessageBubble key={msg.id} message={msg} onRetry={onRetry} onEdit={onEdit} />
+          <MessageBubble key={msg.id} message={msg} onRetry={onRetry} onEdit={onEdit} onFork={onFork} />
         ))}
         {isStreaming && (
           <div className="mb-8">
@@ -373,7 +374,7 @@ function extractText(node: React.ReactNode): string {
   return '';
 }
 
-function MessageBubble({ message, onRetry, onEdit }: { message: Message; onRetry: (id: string, retryWith: 'local' | 'cloud') => void; onEdit: (id: string, newText: string) => void }) {
+function MessageBubble({ message, onRetry, onEdit, onFork }: { message: Message; onRetry: (id: string, retryWith: 'local' | 'cloud') => void; onEdit: (id: string, newText: string) => void; onFork?: (id: string) => void }) {
   const isUser = message.role === 'user';
   const isCloud = message.answered_by?.startsWith('claude');
   const isLocal = message.answered_by?.startsWith('local');
@@ -446,14 +447,26 @@ function MessageBubble({ message, onRetry, onEdit }: { message: Message; onRetry
               <div className="whitespace-pre-wrap" style={{ color: 'var(--text-primary)', fontSize: '15px', lineHeight: '1.6' }}>
                 {message.text}
               </div>
-              <button
-                onClick={() => setEditing(true)}
-                className="absolute -bottom-1 -right-1 p-1 rounded-md cursor-pointer transition-all active:scale-[0.9] opacity-0 group-hover:opacity-100"
-                style={{ color: 'var(--text-muted)', background: 'var(--bg-secondary)', border: '1px solid var(--border-light)' }}
-                title="Edit message"
-              >
-                <Pencil size={11} />
-              </button>
+              <div className="absolute -bottom-1 -right-1 flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                {onFork && (
+                  <button
+                    onClick={() => onFork(message.id)}
+                    className="p-1 rounded-md cursor-pointer transition-all active:scale-[0.9]"
+                    style={{ color: 'var(--text-muted)', background: 'var(--bg-secondary)', border: '1px solid var(--border-light)' }}
+                    title="Fork conversation from here"
+                  >
+                    <GitFork size={11} />
+                  </button>
+                )}
+                <button
+                  onClick={() => setEditing(true)}
+                  className="p-1 rounded-md cursor-pointer transition-all active:scale-[0.9]"
+                  style={{ color: 'var(--text-muted)', background: 'var(--bg-secondary)', border: '1px solid var(--border-light)' }}
+                  title="Edit message"
+                >
+                  <Pencil size={11} />
+                </button>
+              </div>
             </div>
           )
         ) : (
@@ -469,6 +482,16 @@ function MessageBubble({ message, onRetry, onEdit }: { message: Message; onRetry
           </span>
           <CopyButton text={message.text} />
           <FeedbackButtons messageId={message.id} />
+          {onFork && (
+            <button
+              onClick={() => onFork(message.id)}
+              className="flex items-center gap-1 text-xs px-2 py-1 rounded-full transition-all cursor-pointer active:scale-[0.95] opacity-0 group-hover:opacity-100"
+              style={{ color: 'var(--text-muted)', background: 'var(--bg-secondary)', border: '1px solid var(--border-light)' }}
+              title="Fork conversation from here"
+            >
+              <GitFork size={11} />
+            </button>
+          )}
           {isLocal && (
             <button
               onClick={() => onRetry(message.id, 'cloud')}
