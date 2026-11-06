@@ -240,6 +240,25 @@ export interface FileSearchResult {
   is_dir: boolean;
 }
 
+export interface InstructionsInfo {
+  found: boolean;
+  file: string | null;
+  content: string | null;
+}
+
+export async function getProjectInstructions(projectId: string): Promise<InstructionsInfo> {
+  const res = await fetch(`${BASE}/projects/${projectId}/instructions`);
+  return res.json();
+}
+
+export async function setProjectInstructions(projectId: string, content: string): Promise<void> {
+  await fetch(`${BASE}/projects/${projectId}/instructions`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ content }),
+  });
+}
+
 export async function searchFiles(projectId: string, query: string): Promise<{ results: FileSearchResult[] }> {
   const res = await fetch(`${BASE}/search/files`, {
     method: 'POST',

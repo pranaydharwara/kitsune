@@ -7,7 +7,13 @@ Similar to .cursorrules or CLAUDE.md.
 
 from pathlib import Path
 
-INSTRUCTION_FILES = [".kitsune.md", "KITSUNE.md", ".cursorrules", "CLAUDE.md"]
+INSTRUCTION_FILES = [
+    ".kitsune/instructions.md",
+    ".kitsune.md",
+    "KITSUNE.md",
+    ".cursorrules",
+    "CLAUDE.md",
+]
 MAX_INSTRUCTION_CHARS = 4000
 
 
@@ -31,3 +37,30 @@ def load_project_instructions(project_path: str) -> str | None:
                 continue
 
     return None
+
+
+def save_project_instructions(project_path: str, content: str) -> str:
+    root = Path(project_path)
+    kitsune_dir = root / ".kitsune"
+    kitsune_dir.mkdir(exist_ok=True)
+    fpath = kitsune_dir / "instructions.md"
+    fpath.write_text(content, encoding="utf-8")
+    return str(fpath)
+
+
+def get_instructions_info(project_path: str) -> dict:
+    root = Path(project_path)
+    if not root.is_dir():
+        return {"found": False, "file": None, "content": None}
+
+    for fname in INSTRUCTION_FILES:
+        fpath = root / fname
+        if fpath.is_file():
+            try:
+                text = fpath.read_text(encoding="utf-8", errors="replace").strip()
+                if text:
+                    return {"found": True, "file": fname, "content": text}
+            except (OSError, UnicodeDecodeError):
+                continue
+
+    return {"found": False, "file": None, "content": None}

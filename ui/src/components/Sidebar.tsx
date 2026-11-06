@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { ChevronDown, ChevronRight, FolderPlus, Plus, Search, Settings, Star, Trash2, X } from 'lucide-react';
+import { BookOpen, ChevronDown, ChevronRight, FolderPlus, Plus, Search, Settings, Star, Trash2, X } from 'lucide-react';
 import type { Conversation, Project } from '../lib/api';
 
 interface SidebarProps {
@@ -18,6 +18,7 @@ interface SidebarProps {
   onCancelAddProject: () => void;
   onDeleteProject: (id: string) => void;
   onSelectProject: (id: string | null) => void;
+  onEditInstructions: (projectId: string) => void;
 }
 
 export function Sidebar({
@@ -36,6 +37,7 @@ export function Sidebar({
   onCancelAddProject,
   onDeleteProject,
   onSelectProject,
+  onEditInstructions,
 }: SidebarProps) {
   const [query, setQuery] = useState('');
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
@@ -146,6 +148,17 @@ export function Sidebar({
                 >
                   {projectConvs.length}
                 </span>
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onEditInstructions(project.id);
+                  }}
+                  className="opacity-0 group-hover:opacity-100 transition-opacity p-0.5 rounded cursor-pointer"
+                  style={{ color: 'var(--text-muted)' }}
+                  title="Project instructions"
+                >
+                  <BookOpen size={11} />
+                </button>
                 <button
                   onClick={(e) => {
                     e.stopPropagation();

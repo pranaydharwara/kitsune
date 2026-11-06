@@ -48,7 +48,7 @@ Close the gap between Kitsune's chat experience and Claude's. Local model on top
 Make the local model smarter by giving it the right context automatically.
 
 ### Project awareness
-- [ ] Instruction files (`.kitsune/instructions.md`) per-project
+- [x] Instruction files (`.kitsune/instructions.md`) per-project
 - [ ] Persist context panel state across conversations
 - [ ] @mention autocomplete for files outside current project
 - [ ] Fix: context indexing stalls on large repos (>10k files)

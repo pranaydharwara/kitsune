@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { ChatThread } from './components/ChatThread';
 import { Composer } from './components/Composer';
+import { InstructionsEditor } from './components/InstructionsEditor';
 import { Settings } from './components/Settings';
 import { Sidebar } from './components/Sidebar';
 import { ToolActivity } from './components/ToolActivity';
@@ -34,6 +35,7 @@ export default function App() {
   const [models, setModels] = useState<ModelsResponse>({ local: [], cloud: [] });
   const [selectedModel, setSelectedModel] = useState<string | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [instructionsProjectId, setInstructionsProjectId] = useState<string | null>(null);
   const [speed, setSpeed] = useState<number | null>(null);
   const [toolEvents, setToolEvents] = useState<ToolUseEvent[]>([]);
   const [toolPanelOpen, setToolPanelOpen] = useState(false);
@@ -324,6 +326,7 @@ export default function App() {
         onCancelAddProject={() => setAddingProject(false)}
         onDeleteProject={handleDeleteProject}
         onSelectProject={handleSelectProject}
+        onEditInstructions={setInstructionsProjectId}
       />
       <main className="flex-1 flex flex-col min-w-0">
         <ChatThread
@@ -372,6 +375,13 @@ export default function App() {
       <ContextPanel data={mentionContext} open={contextPanelOpen} onClose={() => setContextPanelOpen(false)} />
       <ToolActivity events={toolEvents} open={toolPanelOpen} onClose={() => setToolPanelOpen(false)} />
       <Settings open={settingsOpen} onClose={() => setSettingsOpen(false)} onRefresh={refreshConversations} />
+      {instructionsProjectId && (
+        <InstructionsEditor
+          projectId={instructionsProjectId}
+          projectName={projects.find((p) => p.id === instructionsProjectId)?.name || 'Project'}
+          onClose={() => setInstructionsProjectId(null)}
+        />
+      )}
     </div>
   );
 }
