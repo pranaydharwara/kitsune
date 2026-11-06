@@ -4,9 +4,8 @@
     {
       "name": "kitsune-ui",
       "runtimeExecutable": "npm",
-      "runtimeArgs": ["--prefix", "ui", "run", "dev", "--", "--port", "5173"],
-      "port": 5173,
-      "url": "http://localhost:5173"
+      "runtimeArgs": ["--prefix", "ui", "run", "dev"],
+      "port": 5173
     }
   ]
 }

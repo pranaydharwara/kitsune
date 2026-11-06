@@ -26,13 +26,13 @@ Close the gap between Kitsune's chat experience and Claude's. Local model on top
 - [ ] Edit and re-send a previous message
 - [ ] Branching / fork a conversation from any message
 - [ ] Conversation starring / pinning
-- [ ] Keyboard shortcuts (Cmd+N new chat, Cmd+K search, Cmd+/ settings)
+- [x] Keyboard shortcuts (Cmd+N new chat, Cmd+K search, Cmd+/ settings, Cmd+M cycle mode)
 - [ ] Drag to reorder sidebar projects
 
 ### Message rendering
-- [ ] Code block copy button, syntax highlighting improvements
+- [x] Code block copy button, syntax highlighting improvements
 - [ ] LaTeX / math rendering
-- [ ] Collapsible long outputs (tool results, code blocks)
+- [x] Collapsible long outputs (tool results, code blocks)
 - [ ] Image rendering in responses
 
 ### Composer

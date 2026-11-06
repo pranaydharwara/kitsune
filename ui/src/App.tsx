@@ -4,7 +4,8 @@ import { Composer } from './components/Composer';
 import { Settings } from './components/Settings';
 import { Sidebar } from './components/Sidebar';
 import { ToolActivity } from './components/ToolActivity';
-import type { Conversation, Message, ModelsResponse, Project, ResolvedMention, RouteInfo, ToolUseEvent } from './lib/api';
+import { ContextPanel } from './components/ContextPanel';
+import type { Conversation, MentionContext, Message, ModelsResponse, Project, RouteInfo, ToolUseEvent } from './lib/api';
 import {
   cancelStream,
   createProject,
@@ -35,7 +36,8 @@ export default function App() {
   const [speed, setSpeed] = useState<number | null>(null);
   const [toolEvents, setToolEvents] = useState<ToolUseEvent[]>([]);
   const [toolPanelOpen, setToolPanelOpen] = useState(false);
-  const [resolvedMentions, setResolvedMentions] = useState<ResolvedMention[]>([]);
+  const [mentionContext, setMentionContext] = useState<MentionContext | null>(null);
+  const [contextPanelOpen, setContextPanelOpen] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
 
   const refreshConversations = useCallback(async () => {
@@ -61,6 +63,29 @@ export default function App() {
     refreshProjects();
     listModels().then(setModels).catch(() => {});
   }, [refreshConversations, refreshProjects]);
+
+  // Global keyboard shortcuts
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      const meta = e.metaKey || e.ctrlKey;
+      if (!meta) return;
+
+      if (e.key === 'n') {
+        e.preventDefault();
+        handleNewChat();
+      } else if (e.key === 'k') {
+        e.preventDefault();
+        // Focus the sidebar search input
+        const searchInput = document.querySelector<HTMLInputElement>('aside input[type="text"]');
+        searchInput?.focus();
+      } else if (e.key === '/' && !e.shiftKey) {
+        e.preventDefault();
+        setSettingsOpen((prev) => !prev);
+      }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, []);
 
   useEffect(() => {
     if (activeId) {
@@ -141,7 +166,8 @@ export default function App() {
     setSpeed(null);
     setToolEvents([]);
     setToolPanelOpen(false);
-    setResolvedMentions([]);
+    setMentionContext(null);
+    setContextPanelOpen(false);
 
     const controller = streamChat(text, activeId, {
       onToken: (token) => {
@@ -169,8 +195,9 @@ export default function App() {
           return [...prev, event];
         });
       },
-      onMentions: (mentions) => {
-        setResolvedMentions(mentions);
+      onMentions: (data) => {
+        setMentionContext(data);
+        setContextPanelOpen(true);
       },
       onDone: async (data) => {
         setIsStreaming(false);
@@ -292,7 +319,7 @@ export default function App() {
           routeInfo={routeInfo}
           speed={speed}
           toolEvents={toolEvents}
-          resolvedMentions={resolvedMentions}
+          resolvedMentions={mentionContext?.items || []}
           onRetry={handleRetry}
         />
         {activeProjectId && !activeId && (
@@ -325,6 +352,7 @@ export default function App() {
           activeProjectId={activeProjectId}
         />
       </main>
+      <ContextPanel data={mentionContext} open={contextPanelOpen} onClose={() => setContextPanelOpen(false)} />
       <ToolActivity events={toolEvents} open={toolPanelOpen} onClose={() => setToolPanelOpen(false)} />
       <Settings open={settingsOpen} onClose={() => setSettingsOpen(false)} onRefresh={refreshConversations} />
     </div>

@@ -50,14 +50,14 @@ export function ToolActivity({ events, open, onClose }: ToolActivityProps) {
 
       <div className="flex-1 overflow-y-auto px-3 py-3 flex flex-col gap-2">
         {events.map((evt, i) => (
-          <ToolEventCard key={i} event={evt} index={i} />
+          <ToolEventCard key={i} event={evt} />
         ))}
       </div>
     </aside>
   );
 }
 
-function ToolEventCard({ event, index }: { event: ToolUseEvent; index: number }) {
+function ToolEventCard({ event }: { event: ToolUseEvent }) {
   const [expanded, setExpanded] = useState(true);
   const meta = TOOL_META[event.tool] || { icon: Terminal, label: event.tool, verb: event.tool };
   const Icon = meta.icon;
@@ -108,7 +108,7 @@ function ToolEventCard({ event, index }: { event: ToolUseEvent; index: number })
           className="px-3 pb-3"
           style={{ borderTop: '1px solid var(--border-light)' }}
         >
-          {event.tool === 'create_file' && event.arguments.content && (
+          {event.tool === 'create_file' && !!event.arguments.content && (
             <div className="mt-2">
               <div className="text-[10px] uppercase tracking-wider mb-1" style={{ color: 'var(--text-muted)' }}>
                 Content
@@ -123,12 +123,12 @@ function ToolEventCard({ event, index }: { event: ToolUseEvent; index: number })
                   wordBreak: 'break-word',
                 }}
               >
-                {String(event.arguments.content).slice(0, 3000)}
+                {String(event.arguments.content as string).slice(0, 3000)}
               </pre>
             </div>
           )}
 
-          {event.tool === 'run_command' && event.arguments.command && (
+          {event.tool === 'run_command' && !!event.arguments.command && (
             <div className="mt-2">
               <div className="text-[10px] uppercase tracking-wider mb-1" style={{ color: 'var(--text-muted)' }}>
                 Command
@@ -142,7 +142,7 @@ function ToolEventCard({ event, index }: { event: ToolUseEvent; index: number })
                   whiteSpace: 'pre-wrap',
                 }}
               >
-                $ {String(event.arguments.command)}
+                $ {String(event.arguments.command as string)}
               </pre>
             </div>
           )}

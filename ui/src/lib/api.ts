@@ -135,7 +135,7 @@ export interface StreamCallbacks {
   onRoute?: (route: RouteInfo) => void;
   onCancelled?: () => void;
   onToolUse?: (event: ToolUseEvent) => void;
-  onMentions?: (mentions: ResolvedMention[]) => void;
+  onMentions?: (data: MentionContext) => void;
 }
 
 export interface Settings {
@@ -209,6 +209,12 @@ export interface ResolvedMention {
   type: string;
   arg: string;
   status: 'ok' | 'not_found';
+  content?: string;
+}
+
+export interface MentionContext {
+  items: ResolvedMention[];
+  instructions?: string;
 }
 
 export interface FileSearchResult {
@@ -301,7 +307,7 @@ export function streamChat(
             } else if (currentEvent === 'tool_use') {
               callbacks.onToolUse?.(data as ToolUseEvent);
             } else if (currentEvent === 'mentions') {
-              callbacks.onMentions?.(data as ResolvedMention[]);
+              callbacks.onMentions?.(data as MentionContext);
             } else {
               if (data.text) {
                 callbacks.onToken(data.text);

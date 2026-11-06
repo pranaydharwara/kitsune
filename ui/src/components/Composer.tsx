@@ -54,7 +54,7 @@ export function Composer({ onSend, disabled, isStreaming, onCancel, mode, select
       e.preventDefault();
       handleSubmit();
     }
-    if (e.key === '/' && (e.metaKey || e.ctrlKey)) {
+    if (e.key === 'm' && (e.metaKey || e.ctrlKey)) {
       e.preventDefault();
       const modes = ['auto', 'local', 'cloud'] as const;
       const idx = modes.indexOf(mode as typeof modes[number]);
@@ -186,7 +186,7 @@ export function Composer({ onSend, disabled, isStreaming, onCancel, mode, select
                 {hasDropdown(m) && <ChevronDown size={10} style={{ marginLeft: 2, opacity: 0.5 }} />}
               </button>
             ))}
-            <span className="text-xs ml-1.5" style={{ color: 'var(--text-muted)', fontSize: '11px' }}>⌘/</span>
+            <span className="text-xs ml-1.5" style={{ color: 'var(--text-muted)', fontSize: '11px' }}>⌘M</span>
           </div>
 
           {isStreaming ? (

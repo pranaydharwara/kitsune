@@ -70,7 +70,7 @@ def resolve_mentions(text: str, project_path: str | None, recent_errors: list[st
 
         if result:
             context_parts.append(result)
-            resolved.append({**mention, "status": "ok"})
+            resolved.append({**mention, "status": "ok", "content": result})
             clean_text = clean_text[:mention["start"]] + clean_text[mention["end"]:]
         else:
             resolved.append({**mention, "status": "not_found"})
