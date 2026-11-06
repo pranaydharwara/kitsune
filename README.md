@@ -1,138 +1,138 @@
-# Kitsune
+<p align="center">
+  <img src="ui/src-tauri/icons/icon.png" width="80" />
+</p>
 
-Local-first AI chat for macOS. Runs models on your machine via Ollama, with automatic escalation to Claude when a query needs more capability.
+<h1 align="center">Kitsune</h1>
+
+<p align="center">
+  <strong>Local-first AI chat for macOS</strong><br>
+  Run models on your machine. Escalate to the cloud when you need to.
+</p>
+
+<p align="center">
+  <a href="#features">Features</a> · <a href="#getting-started">Getting started</a> · <a href="ROADMAP.md">Roadmap</a>
+</p>
+
+---
+
+## Why Kitsune
+
+Most AI chat apps are cloud-only. Kitsune runs a local model (Ollama) by default — your data stays on your Mac. When a query needs more horsepower, it automatically escalates to Claude. You get privacy for everyday questions and full capability when it matters.
+
+## Features
+
+**Chat** — streaming markdown responses, conversation search, export/import, project-based sidebar
+
+**Smart routing** — auto mode classifies each query and picks local or cloud. You can also pin to a specific model per-conversation.
+
+**Agentic tools** — the AI can read files, create files, list directories, and run shell commands in your project
+
+**Context-aware** — codebase indexing, `@mentions` for files, per-project instructions, error detection
+
+**Native macOS** — Tauri v2 app with Apple design language, overlay titlebar, menubar control
 
 ## Architecture
 
 ```
-┌─────────────────────────────────────────┐
-│  Tauri (native macOS app)               │
-│  ┌───────────┐  ┌────────────────────┐  │
-│  │  Sidebar   │  │   Chat thread      │  │
-│  │  Search    │  │   Markdown render  │  │
-│  │  History   │  │   Streaming SSE    │  │
-│  └───────────┘  └────────────────────┘  │
-└──────────────────┬──────────────────────┘
-                   │ HTTP (127.0.0.1:9848)
-┌──────────────────▼──────────────────────┐
-│  FastAPI backend (core/)                │
-│  ┌─────────┐  ┌───────────────────────┐ │
-│  │ Router   │  │ Connectors           │ │
-│  │ (auto/   │  │  ├─ ollama (local)   │ │
-│  │  local/  │  │  └─ claude_cli       │ │
-│  │  cloud)  │  │      (cloud)         │ │
-│  └─────────┘  └───────────────────────┘ │
-│  ┌─────────────────────────────────────┐ │
-│  │ SQLite store (~/.kitsune/kitsune.db)│ │
-│  └─────────────────────────────────────┘ │
-└──────────────────┬──────────────────────┘
-                   │
-        ┌──────────┴──────────┐
-        ▼                     ▼
-   Ollama (local)       Claude API
-   qwen3:30b-a3b        (via CLI)
+Tauri (native macOS app)
+├── React + TypeScript frontend
+└── HTTP → FastAPI backend (core/)
+         ├── Router (auto / local / cloud)
+         ├── Connectors (Ollama, Claude)
+         ├── Tools (file ops, shell)
+         ├── Context (indexing, mentions)
+         └── SQLite (~/.kitsune/kitsune.db)
 ```
 
-## Features
+## Getting started
 
-- **Local-first** — queries default to Ollama models running on your Mac, keeping data on-device
-- **Smart routing** — auto mode classifies queries and escalates to Claude when local models aren't enough
-- **Native macOS app** — Tauri v2 wrapper with overlay titlebar, Apple design language
-- **Streaming responses** — token-by-token SSE streaming with markdown rendering
-- **Conversation search** — filter chat history by title or message content
-- **Model selector** — switch between Auto, Local (pick an Ollama model), or Cloud (pick a Claude model)
-- **Retry with fallback** — retry any response with a different provider
-- **Menubar control** — start/stop the stack from the macOS menu bar
+### Prerequisites
 
-## Prerequisites
+- macOS (Apple Silicon recommended)
+- Python 3.11+
+- [Ollama](https://ollama.com)
+- Node.js 18+ and Rust
+- Claude CLI (optional, for cloud escalation)
 
-- **macOS** (Apple Silicon recommended)
-- **Python 3.11+**
-- **Ollama** — [ollama.com](https://ollama.com)
-- **Node.js 18+** and **Rust** (for building the native app)
-- **Claude CLI** (optional, for cloud escalation)
-
-## Setup
+### Install
 
 ```bash
-# Clone and set up Python
 git clone https://github.com/pranaydharwara/kitsune.git
 cd kitsune
+```
+
+```bash
 uv venv && uv pip install -e ".[dev]"
+```
 
-# Pull the default local model
+```bash
 ollama pull qwen3:30b-a3b
+```
 
-# Install UI dependencies
+```bash
 cd ui && npm install
 ```
 
-## Running
+### Run
 
-### Native app (recommended)
+**Native app** (recommended):
 
 ```bash
-cd ui
-npx tauri build
+cd ui && npx tauri build
 open src-tauri/target/release/bundle/macos/Kitsune.app
 ```
 
-The app automatically starts Ollama and the backend on launch, and stops them on quit.
+The app starts Ollama and the backend on launch, stops them on quit.
 
-### Development
+**Development**:
 
 ```bash
-# Terminal 1: backend
-kitsune up
-
-# Terminal 2: frontend dev server
-cd ui && npm run dev
+kitsune up          # start backend + Ollama
+cd ui && npm run dev  # frontend dev server
 ```
 
-### CLI
+**CLI**:
 
 ```bash
-kitsune up       # start backend + Ollama
-kitsune down     # stop everything
-kitsune status   # check what's running
+kitsune up       # start
+kitsune down     # stop
+kitsune status   # check
 ```
 
 ## Testing
 
 ```bash
-cd ui
-npm test              # headless Playwright e2e tests
-npm run test:headed   # watch mode
+cd ui && npm test
 ```
 
 ## Project structure
 
 ```
 core/
-  api/           # FastAPI routes (chat, conversations)
-  connectors/    # Ollama and Claude CLI adapters
-  router/        # Auto/local/cloud routing logic
-  store/         # SQLite persistence (conversations, messages)
-  config.py      # Models, ports, paths
-  main.py        # FastAPI app entry point
-  cli.py         # kitsune up/down/status
-  menubar.py     # macOS menu bar app
+  api/           FastAPI routes (chat, conversations)
+  connectors/    Ollama and Claude adapters
+  context/       Codebase indexing, mentions
+  router/        Auto/local/cloud routing
+  store/         SQLite persistence
+  tools/         Agent tool implementations
+  config.py      Models, ports, paths
+  main.py        App entry point
 ui/
-  src/           # React + TypeScript frontend
-  src-tauri/     # Tauri v2 native shell (Rust)
-  e2e/           # Playwright tests
+  src/           React + TypeScript frontend
+  src-tauri/     Tauri v2 native shell (Rust)
+  e2e/           Playwright tests
 ```
 
 ## Configuration
 
-Default models and settings are in `core/config.py`:
+Defaults in `core/config.py`:
 
-| Setting | Default | Description |
-|---------|---------|-------------|
-| `MAIN_MODEL` | `qwen3:30b-a3b` | Primary local model |
-| `CLASSIFIER_MODEL` | `qwen3:4b` | Query classifier for auto routing |
-| `DEFAULT_PORT` | `9848` | Backend API port |
-| `CLAUDE_HANDOFF_BUDGET` | `24,000` tokens | Context budget before escalating to Claude |
+| Setting | Default | |
+|---|---|---|
+| Main model | `qwen3:30b-a3b` | Primary local model |
+| Classifier | `qwen3:4b` | Query routing |
+| Port | `9848` | Backend API |
+| Handoff budget | 24k tokens | Escalation threshold |
 
 ## License
 
