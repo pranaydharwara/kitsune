@@ -79,7 +79,7 @@ Bring agentic capabilities closer to Claude Code level.
 
 ### New tools
 - [ ] Terminal integration (persistent shell session)
-- [ ] Git operations (diff, commit, branch from chat)
+- [x] Git operations (diff, commit, branch from chat)
 - [ ] Browser preview (render HTML/React from chat)
 
 ### MCP

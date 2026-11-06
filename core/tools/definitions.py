@@ -80,6 +80,28 @@ TOOL_SCHEMAS = [
             },
         },
     },
+    {
+        "type": "function",
+        "function": {
+            "name": "git_operation",
+            "description": "Run a git operation in the project. Supports: status, diff, log, branch, checkout, add, commit. Use this instead of run_command for git tasks.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "operation": {
+                        "type": "string",
+                        "enum": ["status", "diff", "log", "branch", "checkout", "add", "commit"],
+                        "description": "The git operation to perform",
+                    },
+                    "args": {
+                        "type": "string",
+                        "description": "Additional arguments (e.g. file paths for add, branch name for checkout, commit message for commit)",
+                    },
+                },
+                "required": ["operation"],
+            },
+        },
+    },
 ]
 
 IGNORE_DIRS = {".git", "node_modules", "__pycache__", ".venv", "venv", "target", "dist", "build", ".next"}
@@ -105,6 +127,8 @@ def execute_tool(name: str, arguments: dict, project_path: str) -> dict:
         return _list_files(project_path, arguments.get("path", "."))
     elif name == "run_command":
         return _run_command(project_path, arguments.get("command", ""))
+    elif name == "git_operation":
+        return _git_operation(project_path, arguments.get("operation", ""), arguments.get("args", ""))
     else:
         return {"error": f"Unknown tool: {name}"}
 
@@ -180,6 +204,54 @@ def _run_command(project_root: str, command: str) -> dict:
         return {"output": output, "exit_code": result.returncode}
     except subprocess.TimeoutExpired:
         return {"error": f"Command timed out after {COMMAND_TIMEOUT}s"}
+    except Exception as e:
+        return {"error": str(e)}
+
+
+_GIT_OPS = {
+    "status": ["git", "status", "--short"],
+    "diff": ["git", "diff"],
+    "log": ["git", "log", "--oneline", "-20"],
+    "branch": ["git", "branch", "-a"],
+}
+
+
+def _git_operation(project_root: str, operation: str, args: str = "") -> dict:
+    if operation in _GIT_OPS:
+        cmd = list(_GIT_OPS[operation])
+        if args:
+            cmd.extend(args.split())
+    elif operation == "checkout":
+        if not args:
+            return {"error": "checkout requires a branch name"}
+        cmd = ["git", "checkout"] + args.split()
+    elif operation == "add":
+        if not args:
+            return {"error": "add requires file path(s)"}
+        cmd = ["git", "add"] + args.split()
+    elif operation == "commit":
+        if not args:
+            return {"error": "commit requires a message"}
+        cmd = ["git", "commit", "-m", args]
+    else:
+        return {"error": f"Unknown git operation: {operation}"}
+
+    try:
+        result = subprocess.run(
+            cmd,
+            cwd=project_root,
+            capture_output=True,
+            text=True,
+            timeout=COMMAND_TIMEOUT,
+        )
+        output = result.stdout
+        if result.stderr:
+            output += ("\n" if output else "") + result.stderr
+        if len(output) > MAX_READ_CHARS:
+            output = output[:MAX_READ_CHARS] + "\n... (truncated)"
+        return {"output": output, "exit_code": result.returncode, "operation": operation}
+    except subprocess.TimeoutExpired:
+        return {"error": f"Git operation timed out after {COMMAND_TIMEOUT}s"}
     except Exception as e:
         return {"error": str(e)}
 

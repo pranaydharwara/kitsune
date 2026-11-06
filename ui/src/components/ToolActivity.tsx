@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Check, ChevronDown, ChevronRight, FileText, Terminal, FolderOpen, Eye, Loader2, X, AlertCircle } from 'lucide-react';
+import { Check, ChevronDown, ChevronRight, FileText, GitBranch, Terminal, FolderOpen, Eye, Loader2, X, AlertCircle } from 'lucide-react';
 import type { ToolUseEvent } from '../lib/api';
 
 interface ToolActivityProps {
@@ -13,6 +13,7 @@ const TOOL_META: Record<string, { icon: typeof Terminal; label: string; verb: st
   read_file: { icon: Eye, label: 'Read File', verb: 'Read' },
   list_files: { icon: FolderOpen, label: 'List Files', verb: 'Listed' },
   run_command: { icon: Terminal, label: 'Run Command', verb: 'Ran' },
+  git_operation: { icon: GitBranch, label: 'Git', verb: 'Git' },
 };
 
 export function ToolActivity({ events, open, onClose }: ToolActivityProps) {
@@ -229,6 +230,11 @@ function _getDetail(event: ToolUseEvent): string {
     const cmd = (event.arguments.command as string) || '';
     return cmd.length > 40 ? cmd.slice(0, 37) + '...' : cmd;
   }
+  if (event.tool === 'git_operation') {
+    const op = (event.arguments.operation as string) || '';
+    const args = (event.arguments.args as string) || '';
+    return args ? `${op} ${args}` : op;
+  }
   return '';
 }
 
@@ -239,7 +245,7 @@ function _getResultContent(event: ToolUseEvent): string | null {
     return String(event.result.error);
   }
 
-  if (event.tool === 'run_command' && event.result.output) {
+  if ((event.tool === 'run_command' || event.tool === 'git_operation') && event.result.output) {
     const out = String(event.result.output);
     const code = event.result.exit_code;
     const prefix = code !== 0 ? `Exit code: ${code}\n` : '';
