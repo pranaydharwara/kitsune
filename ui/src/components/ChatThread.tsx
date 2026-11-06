@@ -2,6 +2,8 @@ import { useEffect, useRef, useState } from 'react';
 import { Check, Copy, Pencil, ThumbsUp, ThumbsDown, FileText, Terminal, FolderOpen, Eye, Loader2, AtSign, AlertCircle } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import remarkMath from 'remark-math';
+import rehypeKatex from 'rehype-katex';
 import type { Message, ResolvedMention, RouteInfo, ToolUseEvent } from '../lib/api';
 import { getContextSnapshot, submitFeedback } from '../lib/api';
 
@@ -16,9 +18,10 @@ interface ChatThreadProps {
   resolvedMentions: ResolvedMention[];
   onRetry: (messageId: string, retryWith: 'local' | 'cloud') => void;
   onEdit: (messageId: string, newText: string) => void;
+  onSend?: (text: string) => void;
 }
 
-export function ChatThread({ messages, streamingText, isStreaming, error, routeInfo, speed: _speed, toolEvents, resolvedMentions, onRetry, onEdit }: ChatThreadProps) {
+export function ChatThread({ messages, streamingText, isStreaming, error, routeInfo, speed: _speed, toolEvents, resolvedMentions, onRetry, onEdit, onSend }: ChatThreadProps) {
   const bottomRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -55,9 +58,10 @@ export function ChatThread({ messages, streamingText, isStreaming, error, routeI
         </h2>
         <div className="flex gap-2 flex-wrap justify-center max-w-md">
           {['Summarise this article for me', 'Help me write an email', 'Explain a concept simply', 'Brainstorm ideas with me'].map((s) => (
-            <span
+            <button
               key={s}
-              className="px-3.5 py-1.5 rounded-full text-[13px] cursor-pointer transition-all active:scale-[0.97]"
+              onClick={() => onSend?.(s)}
+              className="px-3.5 py-1.5 rounded-full text-[13px] cursor-pointer transition-all active:scale-[0.97] hover:border-[var(--accent)]"
               style={{
                 background: 'var(--bg-secondary)',
                 color: 'var(--text-secondary)',
@@ -65,7 +69,7 @@ export function ChatThread({ messages, streamingText, isStreaming, error, routeI
               }}
             >
               {s}
-            </span>
+            </button>
           ))}
         </div>
       </div>
@@ -103,7 +107,7 @@ export function ChatThread({ messages, streamingText, isStreaming, error, routeI
             )}
             <div className="py-3">
               <div className="markdown-body" style={{ color: 'var(--text-primary)', fontSize: '15px', lineHeight: '1.6' }}>
-                <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>{streamingText || ''}</ReactMarkdown>
+                <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]} components={markdownComponents}>{streamingText || ''}</ReactMarkdown>
                 {!streamingText && toolEvents.length > 0 && toolEvents.some(e => e.status === 'running') ? (
                   <span className="text-sm" style={{ color: 'var(--text-muted)' }}>Working...</span>
                 ) : (
@@ -439,7 +443,7 @@ function MessageBubble({ message, onRetry, onEdit }: { message: Message; onRetry
           )
         ) : (
           <div className="markdown-body" style={{ color: 'var(--text-primary)', fontSize: '15px', lineHeight: '1.6' }}>
-            <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>{message.text}</ReactMarkdown>
+            <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]} components={markdownComponents}>{message.text}</ReactMarkdown>
           </div>
         )}
       </div>

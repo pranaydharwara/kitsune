@@ -337,6 +337,7 @@ export default function App() {
           resolvedMentions={mentionContext?.items || []}
           onRetry={handleRetry}
           onEdit={handleEdit}
+          onSend={handleSend}
         />
         {activeProjectId && !activeId && (
           <div className="px-6">

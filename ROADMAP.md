@@ -31,15 +31,15 @@ Close the gap between Kitsune's chat experience and Claude's. Local model on top
 
 ### Message rendering
 - [x] Code block copy button, syntax highlighting improvements
-- [ ] LaTeX / math rendering
+- [x] LaTeX / math rendering
 - [x] Collapsible long outputs (tool results, code blocks)
-- [ ] Image rendering in responses
+- [x] Image rendering in responses
 
 ### Composer
 - [ ] Attach files/images to messages (drag-and-drop)
 - [ ] Paste image from clipboard
 - [x] Shift+Enter for newlines, Enter to send (configurable)
-- [ ] Prompt templates / quick actions
+- [x] Prompt templates / quick actions
 
 ---
 
