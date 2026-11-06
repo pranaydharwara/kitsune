@@ -60,9 +60,9 @@ Make the local model smarter by giving it the right context automatically.
 
 ### Routing & models
 - [ ] Ollama model auto-download on first reference
-- [ ] Routing confidence display (show why auto picked local vs cloud)
-- [ ] Per-conversation model lock
-- [ ] Token usage per-conversation breakdown
+- [x] Routing confidence display (show why auto picked local vs cloud)
+- [x] Per-conversation model lock
+- [x] Token usage per-conversation breakdown
 - [ ] Cost estimation before cloud calls
 
 ---

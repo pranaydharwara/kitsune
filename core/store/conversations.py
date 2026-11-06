@@ -49,7 +49,7 @@ async def get_conversation(db: aiosqlite.Connection, conversation_id: str) -> di
 async def update_conversation(
     db: aiosqlite.Connection, conversation_id: str, **fields
 ) -> None:
-    allowed = {"title", "mode", "escalated", "starred", "summary", "summary_updated_at", "project_id"}
+    allowed = {"title", "mode", "escalated", "starred", "model_id", "summary", "summary_updated_at", "project_id"}
     updates = {k: v for k, v in fields.items() if k in allowed}
     if not updates:
         return

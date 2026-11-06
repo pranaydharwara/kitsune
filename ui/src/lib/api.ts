@@ -72,7 +72,7 @@ export async function deleteConversation(id: string): Promise<void> {
   await fetch(`${BASE}/conversations/${id}`, { method: 'DELETE' });
 }
 
-export async function updateConversation(id: string, fields: { title?: string; mode?: string; project_id?: string | null; starred?: boolean }): Promise<void> {
+export async function updateConversation(id: string, fields: { title?: string; mode?: string; project_id?: string | null; starred?: boolean; model_id?: string | null }): Promise<void> {
   await fetch(`${BASE}/conversations/${id}`, {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json' },
@@ -86,6 +86,11 @@ export async function editMessage(conversationId: string, messageId: string, tex
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ text }),
   });
+}
+
+export async function getConversationUsage(conversationId: string): Promise<UsageStats> {
+  const res = await fetch(`${BASE}/conversations/${conversationId}/usage`);
+  return res.json();
 }
 
 export async function getContextSnapshot(messageId: string): Promise<{ prompt_text: string | null; token_estimate: number | null }> {

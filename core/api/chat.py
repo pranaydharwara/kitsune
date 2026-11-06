@@ -130,7 +130,8 @@ async def chat(req: ChatRequest, request: Request):
 
         history = await get_messages(db, conv["id"])
         mode = req.retry_with or req.mode
-        connector, route_reason = await _pick_connector(mode, history, conv, http, model=req.model)
+        effective_model = req.model or conv.get("model_id")
+        connector, route_reason = await _pick_connector(mode, history, conv, http, model=effective_model)
 
         project_context = None
         project_path = None

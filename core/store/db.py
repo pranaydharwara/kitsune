@@ -21,6 +21,7 @@ CREATE TABLE IF NOT EXISTS conversations (
     mode TEXT NOT NULL DEFAULT 'auto' CHECK (mode IN ('auto', 'local', 'cloud')),
     escalated INTEGER NOT NULL DEFAULT 0,
     starred INTEGER NOT NULL DEFAULT 0,
+    model_id TEXT,
     summary TEXT,
     summary_updated_at TEXT,
     created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
@@ -126,6 +127,9 @@ class DBPool:
             await db.commit()
         if "starred" not in cols:
             await db.execute("ALTER TABLE conversations ADD COLUMN starred INTEGER NOT NULL DEFAULT 0")
+            await db.commit()
+        if "model_id" not in cols:
+            await db.execute("ALTER TABLE conversations ADD COLUMN model_id TEXT")
             await db.commit()
 
     @asynccontextmanager
