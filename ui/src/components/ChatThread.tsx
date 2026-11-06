@@ -92,15 +92,17 @@ export function ChatThread({ messages, streamingText, isStreaming, error, routeI
               </div>
             )}
             {toolEvents.length > 0 && (
-              <div className="mb-3 flex flex-col gap-1.5">
-                {toolEvents.map((evt, i) => (
-                  <ToolEventBadge key={i} event={evt} />
-                ))}
-              </div>
+              <CollapsibleBlock maxHeight={200}>
+                <div className="mb-3 flex flex-col gap-1.5">
+                  {toolEvents.map((evt, i) => (
+                    <ToolEventBadge key={i} event={evt} />
+                  ))}
+                </div>
+              </CollapsibleBlock>
             )}
             <div className="py-3">
               <div className="markdown-body" style={{ color: 'var(--text-primary)', fontSize: '15px', lineHeight: '1.6' }}>
-                <ReactMarkdown remarkPlugins={[remarkGfm]}>{streamingText || ''}</ReactMarkdown>
+                <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>{streamingText || ''}</ReactMarkdown>
                 {!streamingText && toolEvents.length > 0 && toolEvents.some(e => e.status === 'running') ? (
                   <span className="text-sm" style={{ color: 'var(--text-muted)' }}>Working...</span>
                 ) : (
@@ -226,6 +228,131 @@ function CopyButton({ text }: { text: string }) {
   );
 }
 
+function CodeBlockCopyButton({ text }: { text: string }) {
+  const [copied, setCopied] = useState(false);
+  const handleCopy = async () => {
+    await navigator.clipboard.writeText(text);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1500);
+  };
+  return (
+    <button
+      onClick={handleCopy}
+      className="absolute top-2 right-2 p-1.5 rounded-lg cursor-pointer transition-all active:scale-[0.9] opacity-0 group-hover/code:opacity-100"
+      style={{ color: 'var(--text-muted)', background: 'var(--bg-primary)', border: '1px solid var(--border-light)' }}
+      title="Copy code"
+    >
+      {copied ? <Check size={12} /> : <Copy size={12} />}
+    </button>
+  );
+}
+
+function CollapsibleBlock({ children, maxHeight = 300 }: { children: React.ReactNode; maxHeight?: number }) {
+  const contentRef = useRef<HTMLDivElement>(null);
+  const [isOverflow, setIsOverflow] = useState(false);
+  const [collapsed, setCollapsed] = useState(true);
+
+  useEffect(() => {
+    const el = contentRef.current;
+    if (el && el.scrollHeight > maxHeight) {
+      setIsOverflow(true);
+    }
+  }, [children, maxHeight]);
+
+  return (
+    <div className="relative">
+      <div
+        ref={contentRef}
+        style={{
+          maxHeight: collapsed && isOverflow ? `${maxHeight}px` : undefined,
+          overflow: collapsed && isOverflow ? 'hidden' : undefined,
+        }}
+      >
+        {children}
+      </div>
+      {isOverflow && collapsed && (
+        <div
+          className="absolute bottom-0 left-0 right-0 h-16 flex items-end justify-center pb-2"
+          style={{
+            background: 'linear-gradient(transparent, var(--bg-secondary))',
+          }}
+        >
+          <button
+            onClick={() => setCollapsed(false)}
+            className="px-3 py-1 rounded-full text-xs cursor-pointer transition-all active:scale-[0.95]"
+            style={{
+              background: 'var(--bg-primary)',
+              color: 'var(--text-secondary)',
+              border: '1px solid var(--border-light)',
+              fontSize: '11px',
+              fontWeight: 500,
+            }}
+          >
+            Show more
+          </button>
+        </div>
+      )}
+      {isOverflow && !collapsed && (
+        <div className="flex justify-center mt-1">
+          <button
+            onClick={() => setCollapsed(true)}
+            className="px-3 py-1 rounded-full text-xs cursor-pointer transition-all active:scale-[0.95]"
+            style={{
+              color: 'var(--text-muted)',
+              fontSize: '11px',
+            }}
+          >
+            Show less
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+const markdownComponents = {
+  pre({ children, ...props }: React.ComponentProps<'pre'>) {
+    return (
+      <div className="group/code relative">
+        <pre {...props}>{children}</pre>
+        {(() => {
+          const codeChild = Array.isArray(children)
+            ? children.find((c: unknown) => (c as React.ReactElement)?.type === 'code')
+            : (children as React.ReactElement)?.type === 'code'
+              ? children
+              : null;
+          if (!codeChild) return null;
+          const codeEl = codeChild as React.ReactElement<{ children?: React.ReactNode; className?: string }>;
+          const text = extractText(codeEl.props.children);
+          const lang = codeEl.props.className?.replace('language-', '') || '';
+          return (
+            <>
+              {lang && (
+                <span
+                  className="absolute top-2 left-3 text-[10px] uppercase tracking-wider font-medium opacity-0 group-hover/code:opacity-100 transition-opacity"
+                  style={{ color: 'var(--text-muted)' }}
+                >
+                  {lang}
+                </span>
+              )}
+              <CodeBlockCopyButton text={text} />
+            </>
+          );
+        })()}
+      </div>
+    );
+  },
+};
+
+function extractText(node: React.ReactNode): string {
+  if (typeof node === 'string') return node;
+  if (Array.isArray(node)) return node.map(extractText).join('');
+  if (node && typeof node === 'object' && 'props' in node) {
+    return extractText((node as React.ReactElement<{ children?: React.ReactNode }>).props.children);
+  }
+  return '';
+}
+
 function MessageBubble({ message, onRetry }: { message: Message; onRetry: (id: string, retryWith: 'local' | 'cloud') => void }) {
   const isUser = message.role === 'user';
   const isCloud = message.answered_by?.startsWith('claude');
@@ -243,7 +370,7 @@ function MessageBubble({ message, onRetry }: { message: Message; onRetry: (id: s
           </div>
         ) : (
           <div className="markdown-body" style={{ color: 'var(--text-primary)', fontSize: '15px', lineHeight: '1.6' }}>
-            <ReactMarkdown remarkPlugins={[remarkGfm]}>{message.text}</ReactMarkdown>
+            <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>{message.text}</ReactMarkdown>
           </div>
         )}
       </div>

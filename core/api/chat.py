@@ -188,7 +188,13 @@ async def chat(req: ChatRequest, request: Request):
 
     project_path_for_tools = project_path
 
-    resolved_mentions = mention_result["resolved"] if mention_result["resolved"] else None
+    resolved_mentions = None
+    if mention_result["resolved"] or project_instructions:
+        resolved_mentions = {
+            "items": mention_result["resolved"] or [],
+        }
+        if project_instructions:
+            resolved_mentions["instructions"] = project_instructions[:2000]
 
     async def event_stream():
         full_text = ""

@@ -21,7 +21,7 @@ export function MentionMenu({ query, projectId, position, onSelect, onClose }: M
   const [completions, setCompletions] = useState<MentionCompletion[]>([]);
   const [selected, setSelected] = useState(0);
   const menuRef = useRef<HTMLDivElement>(null);
-  const debounceRef = useRef<ReturnType<typeof setTimeout>>();
+  const debounceRef = useRef<ReturnType<typeof setTimeout>>(undefined);
 
   useEffect(() => {
     clearTimeout(debounceRef.current);

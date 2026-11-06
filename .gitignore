@@ -4,6 +4,7 @@ core/static/
 *.db-journal
 *.db-wal
 ~/.kitsune/
+test-results/
 
 # Node
 ui/node_modules/
