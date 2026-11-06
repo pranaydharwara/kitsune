@@ -150,6 +150,13 @@ export interface ToolUseEvent {
   arguments: Record<string, unknown>;
   status: 'running' | 'done';
   result?: Record<string, unknown>;
+  partial?: string;
+}
+
+export interface ModelPullEvent {
+  status: 'pulling' | 'downloading' | 'ready';
+  model: string;
+  percent?: number;
 }
 
 export interface StreamCallbacks {
@@ -160,6 +167,7 @@ export interface StreamCallbacks {
   onCancelled?: () => void;
   onToolUse?: (event: ToolUseEvent) => void;
   onMentions?: (data: MentionContext) => void;
+  onModelPull?: (event: ModelPullEvent) => void;
 }
 
 export interface Settings {
@@ -351,6 +359,8 @@ export function streamChat(
               callbacks.onToolUse?.(data as ToolUseEvent);
             } else if (currentEvent === 'mentions') {
               callbacks.onMentions?.(data as MentionContext);
+            } else if (currentEvent === 'model_pull') {
+              callbacks.onModelPull?.(data as ModelPullEvent);
             } else {
               if (data.text) {
                 callbacks.onToken(data.text);

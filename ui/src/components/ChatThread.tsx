@@ -4,7 +4,7 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import remarkMath from 'remark-math';
 import rehypeKatex from 'rehype-katex';
-import type { Message, ResolvedMention, RouteInfo, ToolUseEvent } from '../lib/api';
+import type { Message, ModelPullEvent, ResolvedMention, RouteInfo, ToolUseEvent } from '../lib/api';
 import { getContextSnapshot, submitFeedback } from '../lib/api';
 
 interface ChatThreadProps {
@@ -20,9 +20,10 @@ interface ChatThreadProps {
   onEdit: (messageId: string, newText: string) => void;
   onFork?: (messageId: string) => void;
   onSend?: (text: string) => void;
+  modelPull?: ModelPullEvent | null;
 }
 
-export function ChatThread({ messages, streamingText, isStreaming, error, routeInfo, speed: _speed, toolEvents, resolvedMentions, onRetry, onEdit, onFork, onSend }: ChatThreadProps) {
+export function ChatThread({ messages, streamingText, isStreaming, error, routeInfo, speed: _speed, toolEvents, resolvedMentions, onRetry, onEdit, onFork, onSend, modelPull }: ChatThreadProps) {
   const bottomRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -97,6 +98,23 @@ export function ChatThread({ messages, streamingText, isStreaming, error, routeI
                 ))}
               </div>
             )}
+            {modelPull && modelPull.status !== 'ready' && (
+              <div
+                className="mb-3 flex items-center gap-2 px-3 py-2 rounded-lg text-xs"
+                style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border-light)', color: 'var(--text-secondary)' }}
+              >
+                <Loader2 size={13} className="animate-spin" style={{ color: 'var(--accent)' }} />
+                <span>
+                  Downloading <strong>{modelPull.model}</strong>
+                  {modelPull.percent != null ? ` — ${modelPull.percent}%` : '...'}
+                </span>
+                {modelPull.percent != null && (
+                  <div className="flex-1 h-1.5 rounded-full overflow-hidden" style={{ background: 'var(--border-light)' }}>
+                    <div className="h-full rounded-full transition-all" style={{ width: `${modelPull.percent}%`, background: 'var(--accent)' }} />
+                  </div>
+                )}
+              </div>
+            )}
             {toolEvents.length > 0 && (
               <CollapsibleBlock maxHeight={200}>
                 <div className="mb-3 flex flex-col gap-1.5">
@@ -109,7 +127,9 @@ export function ChatThread({ messages, streamingText, isStreaming, error, routeI
             <div className="py-3">
               <div className="markdown-body" style={{ color: 'var(--text-primary)', fontSize: '15px', lineHeight: '1.6' }}>
                 <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]} components={markdownComponents}>{streamingText || ''}</ReactMarkdown>
-                {!streamingText && toolEvents.length > 0 && toolEvents.some(e => e.status === 'running') ? (
+                {!streamingText && modelPull && modelPull.status !== 'ready' ? (
+                  <span className="text-sm" style={{ color: 'var(--text-muted)' }}>Preparing model...</span>
+                ) : !streamingText && toolEvents.length > 0 && toolEvents.some(e => e.status === 'running') ? (
                   <span className="text-sm" style={{ color: 'var(--text-muted)' }}>Working...</span>
                 ) : (
                   <span

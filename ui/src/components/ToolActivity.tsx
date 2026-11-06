@@ -191,9 +191,25 @@ function ToolEventCard({ event }: { event: ToolUseEvent }) {
           )}
 
           {isRunning && (
-            <div className="mt-2 flex items-center gap-1.5 text-[11px]" style={{ color: 'var(--text-muted)' }}>
-              <Loader2 size={10} className="animate-spin" />
-              Executing...
+            <div className="mt-2">
+              {event.partial && (
+                <pre
+                  className="text-[11px] p-2 rounded-md overflow-auto max-h-[200px] mb-1.5"
+                  style={{
+                    background: 'var(--bg-secondary)',
+                    color: 'var(--text-secondary)',
+                    fontFamily: 'monospace',
+                    whiteSpace: 'pre-wrap',
+                    wordBreak: 'break-word',
+                  }}
+                >
+                  {event.partial.slice(-3000)}
+                </pre>
+              )}
+              <div className="flex items-center gap-1.5 text-[11px]" style={{ color: 'var(--text-muted)' }}>
+                <Loader2 size={10} className="animate-spin" />
+                {event.partial ? 'Running...' : 'Executing...'}
+              </div>
             </div>
           )}
         </div>

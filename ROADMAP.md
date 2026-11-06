@@ -59,7 +59,7 @@ Make the local model smarter by giving it the right context automatically.
 - [ ] URL fetching and summarization
 
 ### Routing & models
-- [ ] Ollama model auto-download on first reference
+- [x] Ollama model auto-download on first reference
 - [x] Routing confidence display (show why auto picked local vs cloud)
 - [x] Per-conversation model lock
 - [x] Token usage per-conversation breakdown
@@ -74,7 +74,7 @@ Bring agentic capabilities closer to Claude Code level.
 ### Agent improvements
 - [ ] Multi-step tool chains (plan → execute → verify)
 - [ ] Approval gate before destructive tool actions (rm, overwrite)
-- [ ] Tool output streaming (show partial results as tools run)
+- [x] Tool output streaming (show partial results as tools run)
 - [x] Fix: tool activity panel scroll jumps on new events
 
 ### New tools

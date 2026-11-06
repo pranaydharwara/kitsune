@@ -6,7 +6,7 @@ import { Settings } from './components/Settings';
 import { Sidebar } from './components/Sidebar';
 import { ToolActivity } from './components/ToolActivity';
 import { ContextPanel } from './components/ContextPanel';
-import type { Conversation, MentionContext, Message, ModelsResponse, Project, RouteInfo, ToolUseEvent } from './lib/api';
+import type { Conversation, MentionContext, Message, ModelPullEvent, ModelsResponse, Project, RouteInfo, ToolUseEvent } from './lib/api';
 import {
   cancelStream,
   createProject,
@@ -46,6 +46,7 @@ export default function App() {
   const [contextPanelOpen, setContextPanelOpen] = useState(() => {
     try { return localStorage.getItem('kitsune:contextPanelOpen') === '1'; } catch { return false; }
   });
+  const [modelPull, setModelPull] = useState<ModelPullEvent | null>(null);
   const abortRef = useRef<AbortController | null>(null);
 
   useEffect(() => {
@@ -204,6 +205,7 @@ export default function App() {
     setToolPanelOpen(false);
     setMentionContext(null);
     setContextPanelOpen(false);
+    setModelPull(null);
 
     const controller = streamChat(text, activeId, {
       onToken: (token) => {
@@ -213,18 +215,23 @@ export default function App() {
         setRouteInfo(route);
       },
       onToolUse: (event) => {
-        if (event.status === 'running') {
+        if (event.status === 'running' && !event.partial) {
           setToolPanelOpen(true);
         }
         setToolEvents((prev) => {
-          if (event.status === 'done') {
+          if (event.status === 'done' || event.partial) {
             const idx = prev.findLastIndex(
               (e) => e.tool === event.tool && e.status === 'running'
                 && JSON.stringify(e.arguments) === JSON.stringify(event.arguments),
             );
             if (idx >= 0) {
               const next = [...prev];
-              next[idx] = event;
+              if (event.partial) {
+                const existing = next[idx];
+                next[idx] = { ...existing, partial: (existing.partial || '') + event.partial };
+              } else {
+                next[idx] = event;
+              }
               return next;
             }
           }
@@ -235,8 +242,15 @@ export default function App() {
         setMentionContext(data);
         setContextPanelOpen(true);
       },
+      onModelPull: (event) => {
+        setModelPull(event);
+        if (event.status === 'ready') {
+          setTimeout(() => setModelPull(null), 2000);
+        }
+      },
       onDone: async (data) => {
         setIsStreaming(false);
+        setModelPull(null);
         setStreamingText('');
         if (!activeId) {
           setActiveId(data.conversation_id);
@@ -362,6 +376,7 @@ export default function App() {
           onEdit={handleEdit}
           onFork={handleFork}
           onSend={handleSend}
+          modelPull={modelPull}
         />
         {activeProjectId && !activeId && (
           <div className="px-6">

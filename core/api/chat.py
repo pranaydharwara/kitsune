@@ -24,7 +24,7 @@ from core.context.project import build_project_context
 from core.store.conversations import create_conversation, get_conversation, update_conversation
 from core.store.messages import add_message, get_messages
 from core.store.projects import get_project
-from core.tools.definitions import TOOL_SCHEMAS, execute_tool
+from core.tools.definitions import TOOL_SCHEMAS, execute_tool, execute_tool_streaming
 
 router = APIRouter(prefix="/api")
 
@@ -220,6 +220,24 @@ async def chat(req: ChatRequest, request: Request):
             "event": "route",
             "data": json.dumps(route_data),
         }
+
+        if isinstance(connector, OllamaConnector) and not await connector.is_available():
+            yield {"event": "model_pull", "data": json.dumps({"status": "pulling", "model": connector.model})}
+            last_pct = -1
+            try:
+                async for progress in connector.pull_model():
+                    total = progress.get("total", 0)
+                    completed = progress.get("completed", 0)
+                    if total > 0:
+                        pct = int(completed * 100 / total)
+                        if pct != last_pct and pct % 5 == 0:
+                            last_pct = pct
+                            yield {"event": "model_pull", "data": json.dumps({"status": "downloading", "model": connector.model, "percent": pct})}
+                yield {"event": "model_pull", "data": json.dumps({"status": "ready", "model": connector.model})}
+                _model_cache["ts"] = 0
+            except Exception as e:
+                yield {"event": "error", "data": json.dumps({"error": f"Failed to download model {connector.model}: {e}"})}
+                return
 
         cancelled = False
         try:
@@ -573,7 +591,15 @@ async def _tool_loop(connector, chat_messages: list[dict] | None, system: str, p
                 "data": json.dumps({"tool": tool_name, "arguments": arguments, "status": "running"}),
             }
 
-            result = execute_tool(tool_name, arguments, project_path)
+            result = {}
+            async for chunk in execute_tool_streaming(tool_name, arguments, project_path):
+                if "_partial" in chunk:
+                    yield {
+                        "event": "tool_use",
+                        "data": json.dumps({"tool": tool_name, "arguments": arguments, "status": "running", "partial": chunk["_partial"]}),
+                    }
+                elif "_done" in chunk:
+                    result = {k: v for k, v in chunk.items() if not k.startswith("_")}
 
             if conv_id:
                 collector = get_collector(conv_id)

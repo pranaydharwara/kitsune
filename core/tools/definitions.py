@@ -1,8 +1,10 @@
 """Tool definitions and execution for agentic file operations."""
 
+import asyncio
 import json
 import os
 import subprocess
+from collections.abc import AsyncIterator
 from pathlib import Path
 
 TOOL_SCHEMAS = [
@@ -180,3 +182,49 @@ def _run_command(project_root: str, command: str) -> dict:
         return {"error": f"Command timed out after {COMMAND_TIMEOUT}s"}
     except Exception as e:
         return {"error": str(e)}
+
+
+async def execute_tool_streaming(
+    name: str, arguments: dict, project_path: str
+) -> AsyncIterator[dict]:
+    if name != "run_command":
+        yield execute_tool(name, arguments, project_path)
+        return
+
+    command = arguments.get("command", "")
+    blocked = ["rm -rf /", "rm -rf ~", "sudo", "mkfs", "dd if="]
+    for b in blocked:
+        if b in command:
+            yield {"error": f"Blocked dangerous command pattern: {b}", "_done": True}
+            return
+
+    try:
+        proc = await asyncio.create_subprocess_shell(
+            command,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.STDOUT,
+            cwd=project_path,
+            env={**os.environ, "PATH": os.environ.get("PATH", "")},
+        )
+        output_lines: list[str] = []
+        assert proc.stdout is not None
+        while True:
+            try:
+                line = await asyncio.wait_for(proc.stdout.readline(), timeout=COMMAND_TIMEOUT)
+            except asyncio.TimeoutError:
+                proc.kill()
+                yield {"output": "".join(output_lines), "exit_code": -1, "error": f"Command timed out after {COMMAND_TIMEOUT}s", "_done": True}
+                return
+            if not line:
+                break
+            decoded = line.decode("utf-8", errors="replace")
+            output_lines.append(decoded)
+            yield {"_partial": decoded}
+
+        returncode = await proc.wait()
+        full_output = "".join(output_lines)
+        if len(full_output) > MAX_READ_CHARS:
+            full_output = full_output[:MAX_READ_CHARS] + "\n... (truncated)"
+        yield {"output": full_output, "exit_code": returncode, "_done": True}
+    except Exception as e:
+        yield {"error": str(e), "_done": True}
