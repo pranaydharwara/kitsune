@@ -420,7 +420,7 @@ export default function App() {
       </main>
       <ContextPanel data={mentionContext} open={contextPanelOpen} onClose={() => setContextPanelOpen(false)} />
       <ToolActivity events={toolEvents} open={toolPanelOpen} onClose={() => setToolPanelOpen(false)} />
-      <Settings open={settingsOpen} onClose={() => setSettingsOpen(false)} onRefresh={refreshConversations} />
+      <Settings open={settingsOpen} onClose={() => setSettingsOpen(false)} onRefresh={refreshConversations} updater={updater} />
       {instructionsProjectId && (
         <InstructionsEditor
           projectId={instructionsProjectId}
