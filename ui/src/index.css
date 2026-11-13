@@ -1,4 +1,5 @@
 @import "tailwindcss";
+@import "katex/dist/katex.min.css";
 
 :root {
   --accent: #0066cc;
@@ -148,4 +149,14 @@ body {
   border: none;
   border-top: 1px solid var(--border-light);
   margin: 1.25em 0;
+}
+.markdown-body img {
+  max-width: 100%;
+  border-radius: 11px;
+  margin: 0.75em 0;
+}
+.markdown-body .katex-display {
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding: 0.25em 0;
 }

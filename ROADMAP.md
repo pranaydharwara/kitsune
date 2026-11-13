@@ -23,23 +23,23 @@ A Claude-quality chat experience that runs local models on your Mac — with clo
 Close the gap between Kitsune's chat experience and Claude's. Local model on top, cloud-level polish.
 
 ### Conversation features
-- [ ] Edit and re-send a previous message
-- [ ] Branching / fork a conversation from any message
-- [ ] Conversation starring / pinning
+- [x] Edit and re-send a previous message
+- [x] Branching / fork a conversation from any message
+- [x] Conversation starring / pinning
 - [x] Keyboard shortcuts (Cmd+N new chat, Cmd+K search, Cmd+/ settings, Cmd+M cycle mode)
 - [ ] Drag to reorder sidebar projects
 
 ### Message rendering
 - [x] Code block copy button, syntax highlighting improvements
-- [ ] LaTeX / math rendering
+- [x] LaTeX / math rendering
 - [x] Collapsible long outputs (tool results, code blocks)
-- [ ] Image rendering in responses
+- [x] Image rendering in responses
 
 ### Composer
 - [ ] Attach files/images to messages (drag-and-drop)
 - [ ] Paste image from clipboard
-- [ ] Shift+Enter for newlines, Enter to send (configurable)
-- [ ] Prompt templates / quick actions
+- [x] Shift+Enter for newlines, Enter to send (configurable)
+- [x] Prompt templates / quick actions
 
 ---
 
@@ -48,8 +48,8 @@ Close the gap between Kitsune's chat experience and Claude's. Local model on top
 Make the local model smarter by giving it the right context automatically.
 
 ### Project awareness
-- [ ] Instruction files (`.kitsune/instructions.md`) per-project
-- [ ] Persist context panel state across conversations
+- [x] Instruction files (`.kitsune/instructions.md`) per-project
+- [x] Persist context panel state across conversations
 - [ ] @mention autocomplete for files outside current project
 - [ ] Fix: context indexing stalls on large repos (>10k files)
 
@@ -59,11 +59,11 @@ Make the local model smarter by giving it the right context automatically.
 - [ ] URL fetching and summarization
 
 ### Routing & models
-- [ ] Ollama model auto-download on first reference
-- [ ] Routing confidence display (show why auto picked local vs cloud)
-- [ ] Per-conversation model lock
-- [ ] Token usage per-conversation breakdown
-- [ ] Cost estimation before cloud calls
+- [x] Ollama model auto-download on first reference
+- [x] Routing confidence display (show why auto picked local vs cloud)
+- [x] Per-conversation model lock
+- [x] Token usage per-conversation breakdown
+- [x] Cost estimation before cloud calls
 
 ---
 
@@ -72,14 +72,14 @@ Make the local model smarter by giving it the right context automatically.
 Bring agentic capabilities closer to Claude Code level.
 
 ### Agent improvements
-- [ ] Multi-step tool chains (plan → execute → verify)
+- [x] Multi-step tool chains (plan → execute → verify)
 - [ ] Approval gate before destructive tool actions (rm, overwrite)
-- [ ] Tool output streaming (show partial results as tools run)
-- [ ] Fix: tool activity panel scroll jumps on new events
+- [x] Tool output streaming (show partial results as tools run)
+- [x] Fix: tool activity panel scroll jumps on new events
 
 ### New tools
 - [ ] Terminal integration (persistent shell session)
-- [ ] Git operations (diff, commit, branch from chat)
+- [x] Git operations (diff, commit, branch from chat)
 - [ ] Browser preview (render HTML/React from chat)
 
 ### MCP
@@ -96,7 +96,7 @@ Bring agentic capabilities closer to Claude Code level.
 - [ ] Provider-agnostic model picker
 
 ### Platform
-- [ ] Auto-update via Tauri updater
+- [x] Auto-update via Tauri updater
 - [ ] Linux build
 - [ ] Crash reporting / diagnostics export
 - [ ] Themes / appearance customization

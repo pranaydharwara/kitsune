@@ -1,16 +1,21 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { ChatThread } from './components/ChatThread';
 import { Composer } from './components/Composer';
+import { InstructionsEditor } from './components/InstructionsEditor';
 import { Settings } from './components/Settings';
 import { Sidebar } from './components/Sidebar';
 import { ToolActivity } from './components/ToolActivity';
 import { ContextPanel } from './components/ContextPanel';
-import type { Conversation, MentionContext, Message, ModelsResponse, Project, RouteInfo, ToolUseEvent } from './lib/api';
+import { UpdateBanner } from './components/UpdateBanner';
+import { useUpdater } from './hooks/useUpdater';
+import type { Conversation, MentionContext, Message, ModelPullEvent, ModelsResponse, Project, RouteInfo, ToolUseEvent } from './lib/api';
 import {
   cancelStream,
   createProject,
   deleteConversation,
   deleteProject,
+  editMessage,
+  forkConversation,
   getMessages,
   listConversations,
   listModels,
@@ -33,12 +38,27 @@ export default function App() {
   const [models, setModels] = useState<ModelsResponse>({ local: [], cloud: [] });
   const [selectedModel, setSelectedModel] = useState<string | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [instructionsProjectId, setInstructionsProjectId] = useState<string | null>(null);
   const [speed, setSpeed] = useState<number | null>(null);
   const [toolEvents, setToolEvents] = useState<ToolUseEvent[]>([]);
-  const [toolPanelOpen, setToolPanelOpen] = useState(false);
+  const [toolPanelOpen, setToolPanelOpen] = useState(() => {
+    try { return localStorage.getItem('kitsune:toolPanelOpen') === '1'; } catch { return false; }
+  });
   const [mentionContext, setMentionContext] = useState<MentionContext | null>(null);
-  const [contextPanelOpen, setContextPanelOpen] = useState(false);
+  const [contextPanelOpen, setContextPanelOpen] = useState(() => {
+    try { return localStorage.getItem('kitsune:contextPanelOpen') === '1'; } catch { return false; }
+  });
+  const [modelPull, setModelPull] = useState<ModelPullEvent | null>(null);
   const abortRef = useRef<AbortController | null>(null);
+  const updater = useUpdater();
+
+  useEffect(() => {
+    try { localStorage.setItem('kitsune:toolPanelOpen', toolPanelOpen ? '1' : '0'); } catch {}
+  }, [toolPanelOpen]);
+
+  useEffect(() => {
+    try { localStorage.setItem('kitsune:contextPanelOpen', contextPanelOpen ? '1' : '0'); } catch {}
+  }, [contextPanelOpen]);
 
   const refreshConversations = useCallback(async () => {
     try {
@@ -149,6 +169,26 @@ export default function App() {
     setActiveProjectId(id);
   };
 
+  const handleStar = async (id: string, starred: boolean) => {
+    await updateConversation(id, { starred });
+    refreshConversations();
+  };
+
+  const handleEdit = async (messageId: string, newText: string) => {
+    if (!activeId) return;
+    await editMessage(activeId, messageId, newText);
+    const msgs = await getMessages(activeId);
+    setMessages(msgs);
+    handleSend(newText);
+  };
+
+  const handleFork = async (messageId: string) => {
+    if (!activeId) return;
+    const result = await forkConversation(activeId, messageId);
+    await refreshConversations();
+    setActiveId(result.id);
+  };
+
   const handleSend = (text: string) => {
     setError(null);
     setRouteInfo(null);
@@ -168,6 +208,7 @@ export default function App() {
     setToolPanelOpen(false);
     setMentionContext(null);
     setContextPanelOpen(false);
+    setModelPull(null);
 
     const controller = streamChat(text, activeId, {
       onToken: (token) => {
@@ -177,18 +218,23 @@ export default function App() {
         setRouteInfo(route);
       },
       onToolUse: (event) => {
-        if (event.status === 'running') {
+        if (event.status === 'running' && !event.partial) {
           setToolPanelOpen(true);
         }
         setToolEvents((prev) => {
-          if (event.status === 'done') {
+          if (event.status === 'done' || event.partial) {
             const idx = prev.findLastIndex(
               (e) => e.tool === event.tool && e.status === 'running'
                 && JSON.stringify(e.arguments) === JSON.stringify(event.arguments),
             );
             if (idx >= 0) {
               const next = [...prev];
-              next[idx] = event;
+              if (event.partial) {
+                const existing = next[idx];
+                next[idx] = { ...existing, partial: (existing.partial || '') + event.partial };
+              } else {
+                next[idx] = event;
+              }
               return next;
             }
           }
@@ -199,8 +245,15 @@ export default function App() {
         setMentionContext(data);
         setContextPanelOpen(true);
       },
+      onModelPull: (event) => {
+        setModelPull(event);
+        if (event.status === 'ready') {
+          setTimeout(() => setModelPull(null), 2000);
+        }
+      },
       onDone: async (data) => {
         setIsStreaming(false);
+        setModelPull(null);
         setStreamingText('');
         if (!activeId) {
           setActiveId(data.conversation_id);
@@ -303,14 +356,23 @@ export default function App() {
         onSelect={setActiveId}
         onNew={handleNewChat}
         onDelete={handleDelete}
+        onStar={handleStar}
         onOpenSettings={() => setSettingsOpen(true)}
         onAddProject={handleAddProject}
         onAddProjectPath={handleAddProjectPath}
         onCancelAddProject={() => setAddingProject(false)}
         onDeleteProject={handleDeleteProject}
         onSelectProject={handleSelectProject}
+        onEditInstructions={setInstructionsProjectId}
       />
       <main className="flex-1 flex flex-col min-w-0">
+        <UpdateBanner
+          status={updater.status}
+          version={updater.version}
+          progress={updater.progress}
+          onInstall={updater.installUpdate}
+          onDismiss={updater.dismiss}
+        />
         <ChatThread
           messages={messages}
           streamingText={streamingText}
@@ -321,6 +383,10 @@ export default function App() {
           toolEvents={toolEvents}
           resolvedMentions={mentionContext?.items || []}
           onRetry={handleRetry}
+          onEdit={handleEdit}
+          onFork={handleFork}
+          onSend={handleSend}
+          modelPull={modelPull}
         />
         {activeProjectId && !activeId && (
           <div className="px-6">
@@ -355,6 +421,13 @@ export default function App() {
       <ContextPanel data={mentionContext} open={contextPanelOpen} onClose={() => setContextPanelOpen(false)} />
       <ToolActivity events={toolEvents} open={toolPanelOpen} onClose={() => setToolPanelOpen(false)} />
       <Settings open={settingsOpen} onClose={() => setSettingsOpen(false)} onRefresh={refreshConversations} />
+      {instructionsProjectId && (
+        <InstructionsEditor
+          projectId={instructionsProjectId}
+          projectName={projects.find((p) => p.id === instructionsProjectId)?.name || 'Project'}
+          onClose={() => setInstructionsProjectId(null)}
+        />
+      )}
     </div>
   );
 }

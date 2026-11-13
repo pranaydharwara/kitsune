@@ -1,8 +1,10 @@
 """Tool definitions and execution for agentic file operations."""
 
+import asyncio
 import json
 import os
 import subprocess
+from collections.abc import AsyncIterator
 from pathlib import Path
 
 TOOL_SCHEMAS = [
@@ -64,6 +66,31 @@ TOOL_SCHEMAS = [
     {
         "type": "function",
         "function": {
+            "name": "edit_file",
+            "description": "Make a surgical edit to an existing file by replacing a specific string with new content. Use this instead of create_file when you only need to change part of a file. The old_string must match exactly (including whitespace and indentation).",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "path": {
+                        "type": "string",
+                        "description": "File path relative to the project root",
+                    },
+                    "old_string": {
+                        "type": "string",
+                        "description": "The exact text to find and replace. Must be unique within the file.",
+                    },
+                    "new_string": {
+                        "type": "string",
+                        "description": "The replacement text",
+                    },
+                },
+                "required": ["path", "old_string", "new_string"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
             "name": "run_command",
             "description": "Run a shell command in the project directory. Use for installing packages, running tests, or other CLI tasks.",
             "parameters": {
@@ -75,6 +102,76 @@ TOOL_SCHEMAS = [
                     },
                 },
                 "required": ["command"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "git_operation",
+            "description": "Run a git operation in the project. Supports: status, diff, log, branch, checkout, add, commit. Use this instead of run_command for git tasks.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "operation": {
+                        "type": "string",
+                        "enum": ["status", "diff", "log", "branch", "checkout", "add", "commit"],
+                        "description": "The git operation to perform",
+                    },
+                    "args": {
+                        "type": "string",
+                        "description": "Additional arguments (e.g. file paths for add, branch name for checkout, commit message for commit)",
+                    },
+                },
+                "required": ["operation"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "think",
+            "description": "Plan your approach before taking action. Use this FIRST when a task requires multiple steps — outline what you will do, then execute each step with the other tools.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "plan": {
+                        "type": "string",
+                        "description": "Your reasoning and overall approach",
+                    },
+                    "steps": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "Concrete steps you will execute in order",
+                    },
+                },
+                "required": ["plan", "steps"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "verify",
+            "description": "Verify the results of your previous actions. Use this after completing a multi-step task to confirm everything worked correctly.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "check": {
+                        "type": "string",
+                        "description": "What you are verifying",
+                    },
+                    "result": {
+                        "type": "string",
+                        "enum": ["pass", "fail", "partial"],
+                        "description": "Verification outcome",
+                    },
+                    "details": {
+                        "type": "string",
+                        "description": "Details about what passed or failed",
+                    },
+                },
+                "required": ["check", "result"],
             },
         },
     },
@@ -97,12 +194,21 @@ def _safe_path(project_root: str, relative: str) -> Path | None:
 def execute_tool(name: str, arguments: dict, project_path: str) -> dict:
     if name == "create_file":
         return _create_file(project_path, arguments.get("path", ""), arguments.get("content", ""))
+    elif name == "edit_file":
+        return _edit_file(project_path, arguments.get("path", ""), arguments.get("old_string", ""), arguments.get("new_string", ""))
     elif name == "read_file":
         return _read_file(project_path, arguments.get("path", ""))
     elif name == "list_files":
         return _list_files(project_path, arguments.get("path", "."))
     elif name == "run_command":
         return _run_command(project_path, arguments.get("command", ""))
+    elif name == "git_operation":
+        return _git_operation(project_path, arguments.get("operation", ""), arguments.get("args", ""))
+    elif name == "think":
+        steps = arguments.get("steps", [])
+        return {"plan": arguments.get("plan", ""), "steps": steps, "step_count": len(steps)}
+    elif name == "verify":
+        return {"check": arguments.get("check", ""), "result": arguments.get("result", ""), "details": arguments.get("details", "")}
     else:
         return {"error": f"Unknown tool: {name}"}
 
@@ -115,6 +221,28 @@ def _create_file(project_root: str, path: str, content: str) -> dict:
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_text(content, encoding="utf-8")
         return {"success": True, "path": path, "size": len(content)}
+    except Exception as e:
+        return {"error": str(e)}
+
+
+def _edit_file(project_root: str, path: str, old_string: str, new_string: str) -> dict:
+    target = _safe_path(project_root, path)
+    if not target:
+        return {"error": "Path escapes project directory"}
+    if not target.is_file():
+        return {"error": f"File not found: {path}"}
+    if old_string == new_string:
+        return {"error": "old_string and new_string are identical"}
+    try:
+        content = target.read_text(encoding="utf-8")
+        count = content.count(old_string)
+        if count == 0:
+            return {"error": "old_string not found in file"}
+        if count > 1:
+            return {"error": f"old_string matches {count} locations — make it more specific"}
+        new_content = content.replace(old_string, new_string, 1)
+        target.write_text(new_content, encoding="utf-8")
+        return {"success": True, "path": path, "replacements": 1}
     except Exception as e:
         return {"error": str(e)}
 
@@ -180,3 +308,97 @@ def _run_command(project_root: str, command: str) -> dict:
         return {"error": f"Command timed out after {COMMAND_TIMEOUT}s"}
     except Exception as e:
         return {"error": str(e)}
+
+
+_GIT_OPS = {
+    "status": ["git", "status", "--short"],
+    "diff": ["git", "diff"],
+    "log": ["git", "log", "--oneline", "-20"],
+    "branch": ["git", "branch", "-a"],
+}
+
+
+def _git_operation(project_root: str, operation: str, args: str = "") -> dict:
+    if operation in _GIT_OPS:
+        cmd = list(_GIT_OPS[operation])
+        if args:
+            cmd.extend(args.split())
+    elif operation == "checkout":
+        if not args:
+            return {"error": "checkout requires a branch name"}
+        cmd = ["git", "checkout"] + args.split()
+    elif operation == "add":
+        if not args:
+            return {"error": "add requires file path(s)"}
+        cmd = ["git", "add"] + args.split()
+    elif operation == "commit":
+        if not args:
+            return {"error": "commit requires a message"}
+        cmd = ["git", "commit", "-m", args]
+    else:
+        return {"error": f"Unknown git operation: {operation}"}
+
+    try:
+        result = subprocess.run(
+            cmd,
+            cwd=project_root,
+            capture_output=True,
+            text=True,
+            timeout=COMMAND_TIMEOUT,
+        )
+        output = result.stdout
+        if result.stderr:
+            output += ("\n" if output else "") + result.stderr
+        if len(output) > MAX_READ_CHARS:
+            output = output[:MAX_READ_CHARS] + "\n... (truncated)"
+        return {"output": output, "exit_code": result.returncode, "operation": operation}
+    except subprocess.TimeoutExpired:
+        return {"error": f"Git operation timed out after {COMMAND_TIMEOUT}s"}
+    except Exception as e:
+        return {"error": str(e)}
+
+
+async def execute_tool_streaming(
+    name: str, arguments: dict, project_path: str
+) -> AsyncIterator[dict]:
+    if name != "run_command":
+        yield execute_tool(name, arguments, project_path)
+        return
+
+    command = arguments.get("command", "")
+    blocked = ["rm -rf /", "rm -rf ~", "sudo", "mkfs", "dd if="]
+    for b in blocked:
+        if b in command:
+            yield {"error": f"Blocked dangerous command pattern: {b}", "_done": True}
+            return
+
+    try:
+        proc = await asyncio.create_subprocess_shell(
+            command,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.STDOUT,
+            cwd=project_path,
+            env={**os.environ, "PATH": os.environ.get("PATH", "")},
+        )
+        output_lines: list[str] = []
+        assert proc.stdout is not None
+        while True:
+            try:
+                line = await asyncio.wait_for(proc.stdout.readline(), timeout=COMMAND_TIMEOUT)
+            except asyncio.TimeoutError:
+                proc.kill()
+                yield {"output": "".join(output_lines), "exit_code": -1, "error": f"Command timed out after {COMMAND_TIMEOUT}s", "_done": True}
+                return
+            if not line:
+                break
+            decoded = line.decode("utf-8", errors="replace")
+            output_lines.append(decoded)
+            yield {"_partial": decoded}
+
+        returncode = await proc.wait()
+        full_output = "".join(output_lines)
+        if len(full_output) > MAX_READ_CHARS:
+            full_output = full_output[:MAX_READ_CHARS] + "\n... (truncated)"
+        yield {"output": full_output, "exit_code": returncode, "_done": True}
+    except Exception as e:
+        yield {"error": str(e), "_done": True}

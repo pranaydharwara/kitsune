@@ -24,7 +24,7 @@ from core.context.project import build_project_context
 from core.store.conversations import create_conversation, get_conversation, update_conversation
 from core.store.messages import add_message, get_messages
 from core.store.projects import get_project
-from core.tools.definitions import TOOL_SCHEMAS, execute_tool
+from core.tools.definitions import TOOL_SCHEMAS, execute_tool, execute_tool_streaming
 
 router = APIRouter(prefix="/api")
 
@@ -130,7 +130,8 @@ async def chat(req: ChatRequest, request: Request):
 
         history = await get_messages(db, conv["id"])
         mode = req.retry_with or req.mode
-        connector, route_reason = await _pick_connector(mode, history, conv, http, model=req.model)
+        effective_model = req.model or conv.get("model_id")
+        connector, route_reason = await _pick_connector(mode, history, conv, http, model=effective_model)
 
         project_context = None
         project_path = None
@@ -207,10 +208,36 @@ async def chat(req: ChatRequest, request: Request):
                 "data": json.dumps(resolved_mentions),
             }
 
+        route_data: dict = {"source": source, "reason": route_reason}
+        if isinstance(connector, (ClaudeSdkConnector, ClaudeCliConnector)):
+            hist_chars = sum(len(m["text"]) for m in history)
+            est_tokens_in = hist_chars // 4
+            est_cost = _estimate_cost(connector.model, est_tokens_in, 1000)
+            if est_cost is not None:
+                route_data["estimated_cost"] = est_cost
+
         yield {
             "event": "route",
-            "data": json.dumps({"source": source, "reason": route_reason}),
+            "data": json.dumps(route_data),
         }
+
+        if isinstance(connector, OllamaConnector) and not await connector.is_available():
+            yield {"event": "model_pull", "data": json.dumps({"status": "pulling", "model": connector.model})}
+            last_pct = -1
+            try:
+                async for progress in connector.pull_model():
+                    total = progress.get("total", 0)
+                    completed = progress.get("completed", 0)
+                    if total > 0:
+                        pct = int(completed * 100 / total)
+                        if pct != last_pct and pct % 5 == 0:
+                            last_pct = pct
+                            yield {"event": "model_pull", "data": json.dumps({"status": "downloading", "model": connector.model, "percent": pct})}
+                yield {"event": "model_pull", "data": json.dumps({"status": "ready", "model": connector.model})}
+                _model_cache["ts"] = 0
+            except Exception as e:
+                yield {"event": "error", "data": json.dumps({"error": f"Failed to download model {connector.model}: {e}"})}
+                return
 
         cancelled = False
         try:
@@ -396,15 +423,19 @@ _TOOL_TAG_OPEN = "<tool_call>"
 _TOOL_TAG_CLOSE = "</tool_call>"
 _TOOL_CALL_RE = re.compile(r"<tool_call>\s*(\{.*?\})\s*</tool_call>", re.DOTALL)
 
-MAX_TOOL_ROUNDS = 5
+MAX_TOOL_ROUNDS = 10
 
 TOOL_SYSTEM_SUFFIX = (
     "\n\nYou have tools to interact with the project files directly. "
     "IMPORTANT: When the user asks you to create, write, edit, or run something, "
     "you MUST use the tools — do NOT just show code in a code block. "
-    "Use create_file to make files, run_command to execute commands, "
-    "read_file to read files, list_files to browse directories. "
-    "After using tools, briefly confirm what you did."
+    "Use create_file to make new files, edit_file to surgically edit existing files, "
+    "run_command to execute commands, read_file to read files, "
+    "list_files to browse directories, git_operation for git tasks. "
+    "Prefer edit_file over create_file when modifying existing files. "
+    "For complex tasks that require multiple steps, use the think tool FIRST "
+    "to plan your approach, then execute each step, and finally use verify "
+    "to confirm the results. After using tools, briefly confirm what you did."
 )
 
 
@@ -482,6 +513,10 @@ def _tool_summary(tool_name: str, arguments: dict, result: dict) -> str:
         size = result.get("size", 0)
         return f"**Created** `{path}` ({size} bytes)"
 
+    if tool_name == "edit_file":
+        path = arguments.get("path", "?")
+        return f"**Edited** `{path}`"
+
     if tool_name == "run_command":
         cmd = arguments.get("command", "?")
         output = result.get("output", "").strip()
@@ -506,6 +541,30 @@ def _tool_summary(tool_name: str, arguments: dict, result: dict) -> str:
         if len(entries) > 30:
             listing += f"\n... ({len(entries)} total)"
         return f"**Listed** `{path}`\n```\n{listing}\n```"
+
+    if tool_name == "git_operation":
+        op = arguments.get("operation", "?")
+        output = result.get("output", "").strip()
+        code = result.get("exit_code", 0)
+        parts = [f"**Git {op}**"]
+        if code != 0:
+            parts[0] += f" — exit code {code}"
+        if output:
+            preview = output[:500] + ("..." if len(output) > 500 else "")
+            parts.append(f"\n```\n{preview}\n```")
+        return "".join(parts)
+
+    if tool_name == "think":
+        steps = result.get("steps", [])
+        step_list = "\n".join(f"{i+1}. {s}" for i, s in enumerate(steps))
+        return f"**Plan** ({len(steps)} steps)\n{step_list}"
+
+    if tool_name == "verify":
+        check = arguments.get("check", "?")
+        verdict = result.get("result", "?")
+        icon = {"pass": "✓", "fail": "✗", "partial": "~"}.get(verdict, "?")
+        details = result.get("details", "")
+        return f"**Verify** {icon} {check}" + (f" — {details}" if details else "")
 
     return f"**Used** {tool_name}"
 
@@ -564,7 +623,15 @@ async def _tool_loop(connector, chat_messages: list[dict] | None, system: str, p
                 "data": json.dumps({"tool": tool_name, "arguments": arguments, "status": "running"}),
             }
 
-            result = execute_tool(tool_name, arguments, project_path)
+            result = {}
+            async for chunk in execute_tool_streaming(tool_name, arguments, project_path):
+                if "_partial" in chunk:
+                    yield {
+                        "event": "tool_use",
+                        "data": json.dumps({"tool": tool_name, "arguments": arguments, "status": "running", "partial": chunk["_partial"]}),
+                    }
+                elif "_done" in chunk:
+                    result = {k: v for k, v in chunk.items() if not k.startswith("_")}
 
             if conv_id:
                 collector = get_collector(conv_id)

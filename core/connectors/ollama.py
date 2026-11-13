@@ -156,6 +156,39 @@ class OllamaConnector:
             if owns_client:
                 await client.aclose()
 
+    async def pull_model(self) -> AsyncIterator[dict]:
+        client = self._http or httpx.AsyncClient(base_url=self.base_url, timeout=600)
+        owns_client = self._http is None
+        try:
+            async with client.stream(
+                "POST",
+                "/api/pull",
+                json={"model": self.model, "stream": True},
+                timeout=600,
+            ) as resp:
+                resp.raise_for_status()
+                async for line in resp.aiter_lines():
+                    if not line:
+                        continue
+                    data = json.loads(line)
+                    yield data
+        finally:
+            if owns_client:
+                await client.aclose()
+
+    async def is_available(self) -> bool:
+        client = self._http or httpx.AsyncClient(base_url=self.base_url, timeout=5)
+        owns_client = self._http is None
+        try:
+            r = await client.get("/api/tags", timeout=2)
+            models = [m["name"] for m in r.json().get("models", [])]
+            return any(self.model in m for m in models)
+        except Exception:
+            return False
+        finally:
+            if owns_client:
+                await client.aclose()
+
     def usage(self, final_event: dict) -> Usage | None:
         if not final_event:
             return None

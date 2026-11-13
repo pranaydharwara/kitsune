@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { Check, ChevronDown, ChevronRight, FileText, Terminal, FolderOpen, Eye, Loader2, X, AlertCircle } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
+import { Check, CheckCircle2, ChevronDown, ChevronRight, FileText, GitBranch, ListChecks, Terminal, FolderOpen, Eye, Loader2, X, AlertCircle, Pencil } from 'lucide-react';
 import type { ToolUseEvent } from '../lib/api';
 
 interface ToolActivityProps {
@@ -10,9 +10,13 @@ interface ToolActivityProps {
 
 const TOOL_META: Record<string, { icon: typeof Terminal; label: string; verb: string }> = {
   create_file: { icon: FileText, label: 'Create File', verb: 'Created' },
+  edit_file: { icon: Pencil, label: 'Edit File', verb: 'Edited' },
   read_file: { icon: Eye, label: 'Read File', verb: 'Read' },
   list_files: { icon: FolderOpen, label: 'List Files', verb: 'Listed' },
   run_command: { icon: Terminal, label: 'Run Command', verb: 'Ran' },
+  git_operation: { icon: GitBranch, label: 'Git', verb: 'Git' },
+  think: { icon: ListChecks, label: 'Plan', verb: 'Planned' },
+  verify: { icon: CheckCircle2, label: 'Verify', verb: 'Verified' },
 };
 
 export function ToolActivity({ events, open, onClose }: ToolActivityProps) {
@@ -48,12 +52,35 @@ export function ToolActivity({ events, open, onClose }: ToolActivityProps) {
         </button>
       </div>
 
-      <div className="flex-1 overflow-y-auto px-3 py-3 flex flex-col gap-2">
-        {events.map((evt, i) => (
-          <ToolEventCard key={i} event={evt} />
-        ))}
-      </div>
+      <ToolEventList events={events} />
     </aside>
+  );
+}
+
+function ToolEventList({ events }: { events: ToolUseEvent[] }) {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const isNearBottom = useRef(true);
+
+  useEffect(() => {
+    const el = containerRef.current;
+    if (el && isNearBottom.current) {
+      el.scrollTop = el.scrollHeight;
+    }
+  }, [events]);
+
+  const handleScroll = () => {
+    const el = containerRef.current;
+    if (el) {
+      isNearBottom.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
+    }
+  };
+
+  return (
+    <div ref={containerRef} onScroll={handleScroll} className="flex-1 overflow-y-auto px-3 py-3 flex flex-col gap-2">
+      {events.map((evt, i) => (
+        <ToolEventCard key={i} event={evt} />
+      ))}
+    </div>
   );
 }
 
@@ -108,6 +135,61 @@ function ToolEventCard({ event }: { event: ToolUseEvent }) {
           className="px-3 pb-3"
           style={{ borderTop: '1px solid var(--border-light)' }}
         >
+          {event.tool === 'think' && Array.isArray(event.arguments.steps) && (
+            <div className="mt-2">
+              <div className="text-[10px] uppercase tracking-wider mb-1" style={{ color: 'var(--text-muted)' }}>
+                Plan
+              </div>
+              <div className="flex flex-col gap-1">
+                {(event.arguments.steps as string[]).map((step: string, i: number) => (
+                  <div key={i} className="flex items-start gap-1.5 text-[11px]" style={{ color: 'var(--text-secondary)' }}>
+                    <span className="shrink-0 w-4 text-right" style={{ color: 'var(--accent)', fontWeight: 600 }}>{i + 1}.</span>
+                    <span>{step}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {event.tool === 'verify' && event.status === 'done' && event.result && (
+            <div className="mt-2">
+              <div
+                className="flex items-center gap-1.5 text-[11px] px-2 py-1.5 rounded-md"
+                style={{
+                  background: event.result.result === 'pass' ? '#00b89410' : event.result.result === 'fail' ? '#d6303110' : 'var(--bg-secondary)',
+                  color: event.result.result === 'pass' ? '#00b894' : event.result.result === 'fail' ? '#d63031' : 'var(--text-secondary)',
+                }}
+              >
+                <span style={{ fontWeight: 600 }}>
+                  {event.result.result === 'pass' ? '✓ Pass' : event.result.result === 'fail' ? '✗ Fail' : '~ Partial'}
+                </span>
+                {event.result.details ? <span className="ml-1">— {String(event.result.details)}</span> : null}
+              </div>
+            </div>
+          )}
+
+          {event.tool === 'edit_file' && !!event.arguments.old_string && (
+            <div className="mt-2">
+              <div className="text-[10px] uppercase tracking-wider mb-1" style={{ color: 'var(--text-muted)' }}>
+                Edit
+              </div>
+              <pre
+                className="text-[11px] p-2 rounded-md overflow-auto max-h-[200px]"
+                style={{
+                  background: 'var(--bg-secondary)',
+                  color: 'var(--text-secondary)',
+                  fontFamily: 'monospace',
+                  whiteSpace: 'pre-wrap',
+                  wordBreak: 'break-word',
+                }}
+              >
+                <span style={{ color: '#d63031' }}>- {String(event.arguments.old_string as string).slice(0, 1500)}</span>
+                {'\n'}
+                <span style={{ color: '#00b894' }}>+ {String(event.arguments.new_string as string || '').slice(0, 1500)}</span>
+              </pre>
+            </div>
+          )}
+
           {event.tool === 'create_file' && !!event.arguments.content && (
             <div className="mt-2">
               <div className="text-[10px] uppercase tracking-wider mb-1" style={{ color: 'var(--text-muted)' }}>
@@ -168,9 +250,25 @@ function ToolEventCard({ event }: { event: ToolUseEvent }) {
           )}
 
           {isRunning && (
-            <div className="mt-2 flex items-center gap-1.5 text-[11px]" style={{ color: 'var(--text-muted)' }}>
-              <Loader2 size={10} className="animate-spin" />
-              Executing...
+            <div className="mt-2">
+              {event.partial && (
+                <pre
+                  className="text-[11px] p-2 rounded-md overflow-auto max-h-[200px] mb-1.5"
+                  style={{
+                    background: 'var(--bg-secondary)',
+                    color: 'var(--text-secondary)',
+                    fontFamily: 'monospace',
+                    whiteSpace: 'pre-wrap',
+                    wordBreak: 'break-word',
+                  }}
+                >
+                  {event.partial.slice(-3000)}
+                </pre>
+              )}
+              <div className="flex items-center gap-1.5 text-[11px]" style={{ color: 'var(--text-muted)' }}>
+                <Loader2 size={10} className="animate-spin" />
+                {event.partial ? 'Running...' : 'Executing...'}
+              </div>
             </div>
           )}
         </div>
@@ -180,7 +278,7 @@ function ToolEventCard({ event }: { event: ToolUseEvent }) {
 }
 
 function _getDetail(event: ToolUseEvent): string {
-  if (event.tool === 'create_file' || event.tool === 'read_file') {
+  if (event.tool === 'create_file' || event.tool === 'read_file' || event.tool === 'edit_file') {
     return (event.arguments.path as string) || '';
   }
   if (event.tool === 'list_files') {
@@ -189,6 +287,18 @@ function _getDetail(event: ToolUseEvent): string {
   if (event.tool === 'run_command') {
     const cmd = (event.arguments.command as string) || '';
     return cmd.length > 40 ? cmd.slice(0, 37) + '...' : cmd;
+  }
+  if (event.tool === 'git_operation') {
+    const op = (event.arguments.operation as string) || '';
+    const args = (event.arguments.args as string) || '';
+    return args ? `${op} ${args}` : op;
+  }
+  if (event.tool === 'think') {
+    const steps = (event.arguments.steps as string[]) || [];
+    return `${steps.length} steps`;
+  }
+  if (event.tool === 'verify') {
+    return (event.arguments.check as string) || '';
   }
   return '';
 }
@@ -200,7 +310,7 @@ function _getResultContent(event: ToolUseEvent): string | null {
     return String(event.result.error);
   }
 
-  if (event.tool === 'run_command' && event.result.output) {
+  if ((event.tool === 'run_command' || event.tool === 'git_operation') && event.result.output) {
     const out = String(event.result.output);
     const code = event.result.exit_code;
     const prefix = code !== 0 ? `Exit code: ${code}\n` : '';
@@ -217,6 +327,21 @@ function _getResultContent(event: ToolUseEvent): string | null {
 
   if (event.tool === 'create_file' && event.result.success) {
     return `Created (${event.result.size} bytes)`;
+  }
+
+  if (event.tool === 'edit_file' && event.result.success) {
+    return `Edited (${event.result.replacements} replacement)`;
+  }
+
+  if (event.tool === 'think' && event.result.steps) {
+    const steps = event.result.steps as string[];
+    return steps.map((s: string, i: number) => `${i + 1}. ${s}`).join('\n');
+  }
+
+  if (event.tool === 'verify') {
+    const icon = { pass: '✓', fail: '✗', partial: '~' }[event.result.result as string] || '?';
+    const details = event.result.details ? `\n${event.result.details}` : '';
+    return `${icon} ${event.result.check || ''}${details}`;
   }
 
   return null;

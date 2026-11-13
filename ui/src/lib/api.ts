@@ -17,6 +17,7 @@ export interface Conversation {
   project_id: string | null;
   mode: string;
   escalated: boolean;
+  starred: boolean;
   created_at: string;
   last_message?: string;
 }
@@ -37,6 +38,7 @@ export interface Message {
 export interface RouteInfo {
   source: string;
   reason: string;
+  estimated_cost?: number;
 }
 
 export async function listProjects(): Promise<Project[]> {
@@ -71,12 +73,34 @@ export async function deleteConversation(id: string): Promise<void> {
   await fetch(`${BASE}/conversations/${id}`, { method: 'DELETE' });
 }
 
-export async function updateConversation(id: string, fields: { title?: string; mode?: string; project_id?: string | null }): Promise<void> {
+export async function updateConversation(id: string, fields: { title?: string; mode?: string; project_id?: string | null; starred?: boolean; model_id?: string | null }): Promise<void> {
   await fetch(`${BASE}/conversations/${id}`, {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(fields),
   });
+}
+
+export async function forkConversation(conversationId: string, messageId: string): Promise<{ id: string; title: string }> {
+  const res = await fetch(`${BASE}/conversations/${conversationId}/fork`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ message_id: messageId }),
+  });
+  return res.json();
+}
+
+export async function editMessage(conversationId: string, messageId: string, text: string): Promise<void> {
+  await fetch(`${BASE}/conversations/${conversationId}/messages/${messageId}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ text }),
+  });
+}
+
+export async function getConversationUsage(conversationId: string): Promise<UsageStats> {
+  const res = await fetch(`${BASE}/conversations/${conversationId}/usage`);
+  return res.json();
 }
 
 export async function getContextSnapshot(messageId: string): Promise<{ prompt_text: string | null; token_estimate: number | null }> {
@@ -126,6 +150,13 @@ export interface ToolUseEvent {
   arguments: Record<string, unknown>;
   status: 'running' | 'done';
   result?: Record<string, unknown>;
+  partial?: string;
+}
+
+export interface ModelPullEvent {
+  status: 'pulling' | 'downloading' | 'ready';
+  model: string;
+  percent?: number;
 }
 
 export interface StreamCallbacks {
@@ -136,6 +167,7 @@ export interface StreamCallbacks {
   onCancelled?: () => void;
   onToolUse?: (event: ToolUseEvent) => void;
   onMentions?: (data: MentionContext) => void;
+  onModelPull?: (event: ModelPullEvent) => void;
 }
 
 export interface Settings {
@@ -225,6 +257,25 @@ export interface FileSearchResult {
   is_dir: boolean;
 }
 
+export interface InstructionsInfo {
+  found: boolean;
+  file: string | null;
+  content: string | null;
+}
+
+export async function getProjectInstructions(projectId: string): Promise<InstructionsInfo> {
+  const res = await fetch(`${BASE}/projects/${projectId}/instructions`);
+  return res.json();
+}
+
+export async function setProjectInstructions(projectId: string, content: string): Promise<void> {
+  await fetch(`${BASE}/projects/${projectId}/instructions`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ content }),
+  });
+}
+
 export async function searchFiles(projectId: string, query: string): Promise<{ results: FileSearchResult[] }> {
   const res = await fetch(`${BASE}/search/files`, {
     method: 'POST',
@@ -308,6 +359,8 @@ export function streamChat(
               callbacks.onToolUse?.(data as ToolUseEvent);
             } else if (currentEvent === 'mentions') {
               callbacks.onMentions?.(data as MentionContext);
+            } else if (currentEvent === 'model_pull') {
+              callbacks.onModelPull?.(data as ModelPullEvent);
             } else {
               if (data.text) {
                 callbacks.onToken(data.text);

@@ -1,8 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
-import { Check, Copy, ThumbsUp, ThumbsDown, FileText, Terminal, FolderOpen, Eye, Loader2, AtSign, AlertCircle } from 'lucide-react';
+import { Check, CheckCircle2, Copy, GitBranch, GitFork, ListChecks, Pencil, ThumbsUp, ThumbsDown, FileText, Terminal, FolderOpen, Eye, Loader2, AtSign, AlertCircle } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import type { Message, ResolvedMention, RouteInfo, ToolUseEvent } from '../lib/api';
+import remarkMath from 'remark-math';
+import rehypeKatex from 'rehype-katex';
+import type { Message, ModelPullEvent, ResolvedMention, RouteInfo, ToolUseEvent } from '../lib/api';
 import { getContextSnapshot, submitFeedback } from '../lib/api';
 
 interface ChatThreadProps {
@@ -15,9 +17,13 @@ interface ChatThreadProps {
   toolEvents: ToolUseEvent[];
   resolvedMentions: ResolvedMention[];
   onRetry: (messageId: string, retryWith: 'local' | 'cloud') => void;
+  onEdit: (messageId: string, newText: string) => void;
+  onFork?: (messageId: string) => void;
+  onSend?: (text: string) => void;
+  modelPull?: ModelPullEvent | null;
 }
 
-export function ChatThread({ messages, streamingText, isStreaming, error, routeInfo, speed: _speed, toolEvents, resolvedMentions, onRetry }: ChatThreadProps) {
+export function ChatThread({ messages, streamingText, isStreaming, error, routeInfo, speed: _speed, toolEvents, resolvedMentions, onRetry, onEdit, onFork, onSend, modelPull }: ChatThreadProps) {
   const bottomRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -54,9 +60,10 @@ export function ChatThread({ messages, streamingText, isStreaming, error, routeI
         </h2>
         <div className="flex gap-2 flex-wrap justify-center max-w-md">
           {['Summarise this article for me', 'Help me write an email', 'Explain a concept simply', 'Brainstorm ideas with me'].map((s) => (
-            <span
+            <button
               key={s}
-              className="px-3.5 py-1.5 rounded-full text-[13px] cursor-pointer transition-all active:scale-[0.97]"
+              onClick={() => onSend?.(s)}
+              className="px-3.5 py-1.5 rounded-full text-[13px] cursor-pointer transition-all active:scale-[0.97] hover:border-[var(--accent)]"
               style={{
                 background: 'var(--bg-secondary)',
                 color: 'var(--text-secondary)',
@@ -64,7 +71,7 @@ export function ChatThread({ messages, streamingText, isStreaming, error, routeI
               }}
             >
               {s}
-            </span>
+            </button>
           ))}
         </div>
       </div>
@@ -75,7 +82,7 @@ export function ChatThread({ messages, streamingText, isStreaming, error, routeI
     <div className="flex-1 overflow-y-auto">
       <div className="max-w-[720px] mx-auto px-6 py-8">
         {messages.map((msg) => (
-          <MessageBubble key={msg.id} message={msg} onRetry={onRetry} />
+          <MessageBubble key={msg.id} message={msg} onRetry={onRetry} onEdit={onEdit} onFork={onFork} />
         ))}
         {isStreaming && (
           <div className="mb-8">
@@ -91,6 +98,23 @@ export function ChatThread({ messages, streamingText, isStreaming, error, routeI
                 ))}
               </div>
             )}
+            {modelPull && modelPull.status !== 'ready' && (
+              <div
+                className="mb-3 flex items-center gap-2 px-3 py-2 rounded-lg text-xs"
+                style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border-light)', color: 'var(--text-secondary)' }}
+              >
+                <Loader2 size={13} className="animate-spin" style={{ color: 'var(--accent)' }} />
+                <span>
+                  Downloading <strong>{modelPull.model}</strong>
+                  {modelPull.percent != null ? ` — ${modelPull.percent}%` : '...'}
+                </span>
+                {modelPull.percent != null && (
+                  <div className="flex-1 h-1.5 rounded-full overflow-hidden" style={{ background: 'var(--border-light)' }}>
+                    <div className="h-full rounded-full transition-all" style={{ width: `${modelPull.percent}%`, background: 'var(--accent)' }} />
+                  </div>
+                )}
+              </div>
+            )}
             {toolEvents.length > 0 && (
               <CollapsibleBlock maxHeight={200}>
                 <div className="mb-3 flex flex-col gap-1.5">
@@ -102,8 +126,10 @@ export function ChatThread({ messages, streamingText, isStreaming, error, routeI
             )}
             <div className="py-3">
               <div className="markdown-body" style={{ color: 'var(--text-primary)', fontSize: '15px', lineHeight: '1.6' }}>
-                <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>{streamingText || ''}</ReactMarkdown>
-                {!streamingText && toolEvents.length > 0 && toolEvents.some(e => e.status === 'running') ? (
+                <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]} components={markdownComponents}>{streamingText || ''}</ReactMarkdown>
+                {!streamingText && modelPull && modelPull.status !== 'ready' ? (
+                  <span className="text-sm" style={{ color: 'var(--text-muted)' }}>Preparing model...</span>
+                ) : !streamingText && toolEvents.length > 0 && toolEvents.some(e => e.status === 'running') ? (
                   <span className="text-sm" style={{ color: 'var(--text-muted)' }}>Working...</span>
                 ) : (
                   <span
@@ -131,6 +157,11 @@ export function ChatThread({ messages, streamingText, isStreaming, error, routeI
 
 function RouteBadge({ route }: { route: RouteInfo }) {
   const isCloud = route.source.startsWith('claude');
+  const costLabel = route.estimated_cost != null
+    ? route.estimated_cost < 0.01
+      ? `~$${(route.estimated_cost * 100).toFixed(1)}¢`
+      : `~$${route.estimated_cost.toFixed(2)}`
+    : null;
   return (
     <span
       className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs"
@@ -139,8 +170,18 @@ function RouteBadge({ route }: { route: RouteInfo }) {
         color: 'var(--text-muted)',
         border: '1px solid var(--border-light)',
       }}
+      title={route.reason}
     >
-      {isCloud ? '☁️' : '💻'} {route.reason}
+      {isCloud ? '☁️' : '💻'}
+      <span style={{ fontWeight: 500 }}>{isCloud ? 'Claude' : 'Local'}</span>
+      <span style={{ opacity: 0.6 }}>·</span>
+      <span>{route.reason}</span>
+      {costLabel && (
+        <>
+          <span style={{ opacity: 0.6 }}>·</span>
+          <span style={{ fontWeight: 500, color: 'var(--accent)' }}>{costLabel}</span>
+        </>
+      )}
     </span>
   );
 }
@@ -150,6 +191,9 @@ const TOOL_ICONS: Record<string, typeof FileText> = {
   read_file: Eye,
   list_files: FolderOpen,
   run_command: Terminal,
+  git_operation: GitBranch,
+  think: ListChecks,
+  verify: CheckCircle2,
 };
 
 const TOOL_LABELS: Record<string, string> = {
@@ -157,6 +201,9 @@ const TOOL_LABELS: Record<string, string> = {
   read_file: 'Reading',
   list_files: 'Listing',
   run_command: 'Running',
+  git_operation: 'Git',
+  think: 'Planning',
+  verify: 'Verifying',
 };
 
 function ToolEventBadge({ event }: { event: ToolUseEvent }) {
@@ -353,10 +400,32 @@ function extractText(node: React.ReactNode): string {
   return '';
 }
 
-function MessageBubble({ message, onRetry }: { message: Message; onRetry: (id: string, retryWith: 'local' | 'cloud') => void }) {
+function MessageBubble({ message, onRetry, onEdit, onFork }: { message: Message; onRetry: (id: string, retryWith: 'local' | 'cloud') => void; onEdit: (id: string, newText: string) => void; onFork?: (id: string) => void }) {
   const isUser = message.role === 'user';
   const isCloud = message.answered_by?.startsWith('claude');
   const isLocal = message.answered_by?.startsWith('local');
+  const [editing, setEditing] = useState(false);
+  const [editText, setEditText] = useState(message.text);
+  const editRef = useRef<HTMLTextAreaElement>(null);
+
+  useEffect(() => {
+    if (editing && editRef.current) {
+      editRef.current.focus();
+      editRef.current.style.height = 'auto';
+      editRef.current.style.height = editRef.current.scrollHeight + 'px';
+    }
+  }, [editing]);
+
+  const handleEditSubmit = () => {
+    const trimmed = editText.trim();
+    if (!trimmed || trimmed === message.text) {
+      setEditing(false);
+      setEditText(message.text);
+      return;
+    }
+    setEditing(false);
+    onEdit(message.id, trimmed);
+  };
 
   return (
     <div className={`group mb-8 ${isUser ? 'flex justify-end' : ''}`}>
@@ -365,12 +434,70 @@ function MessageBubble({ message, onRetry }: { message: Message; onRetry: (id: s
         style={isUser ? { background: 'var(--msg-user-bg)' } : {}}
       >
         {isUser ? (
-          <div className="whitespace-pre-wrap" style={{ color: 'var(--text-primary)', fontSize: '15px', lineHeight: '1.6' }}>
-            {message.text}
-          </div>
+          editing ? (
+            <div>
+              <textarea
+                ref={editRef}
+                value={editText}
+                onChange={(e) => {
+                  setEditText(e.target.value);
+                  e.target.style.height = 'auto';
+                  e.target.style.height = e.target.scrollHeight + 'px';
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleEditSubmit(); }
+                  if (e.key === 'Escape') { setEditing(false); setEditText(message.text); }
+                }}
+                className="w-full resize-none bg-transparent outline-none"
+                style={{ color: 'var(--text-primary)', fontSize: '15px', lineHeight: '1.6', minHeight: '24px' }}
+              />
+              <div className="flex gap-2 mt-2 justify-end">
+                <button
+                  onClick={() => { setEditing(false); setEditText(message.text); }}
+                  className="px-3 py-1 rounded-full text-xs cursor-pointer"
+                  style={{ color: 'var(--text-muted)' }}
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleEditSubmit}
+                  className="px-3 py-1 rounded-full text-xs cursor-pointer"
+                  style={{ background: 'var(--accent)', color: '#fff' }}
+                >
+                  Send
+                </button>
+              </div>
+            </div>
+          ) : (
+            <div className="relative">
+              <div className="whitespace-pre-wrap" style={{ color: 'var(--text-primary)', fontSize: '15px', lineHeight: '1.6' }}>
+                {message.text}
+              </div>
+              <div className="absolute -bottom-1 -right-1 flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                {onFork && (
+                  <button
+                    onClick={() => onFork(message.id)}
+                    className="p-1 rounded-md cursor-pointer transition-all active:scale-[0.9]"
+                    style={{ color: 'var(--text-muted)', background: 'var(--bg-secondary)', border: '1px solid var(--border-light)' }}
+                    title="Fork conversation from here"
+                  >
+                    <GitFork size={11} />
+                  </button>
+                )}
+                <button
+                  onClick={() => setEditing(true)}
+                  className="p-1 rounded-md cursor-pointer transition-all active:scale-[0.9]"
+                  style={{ color: 'var(--text-muted)', background: 'var(--bg-secondary)', border: '1px solid var(--border-light)' }}
+                  title="Edit message"
+                >
+                  <Pencil size={11} />
+                </button>
+              </div>
+            </div>
+          )
         ) : (
           <div className="markdown-body" style={{ color: 'var(--text-primary)', fontSize: '15px', lineHeight: '1.6' }}>
-            <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>{message.text}</ReactMarkdown>
+            <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]} components={markdownComponents}>{message.text}</ReactMarkdown>
           </div>
         )}
       </div>
@@ -381,6 +508,16 @@ function MessageBubble({ message, onRetry }: { message: Message; onRetry: (id: s
           </span>
           <CopyButton text={message.text} />
           <FeedbackButtons messageId={message.id} />
+          {onFork && (
+            <button
+              onClick={() => onFork(message.id)}
+              className="flex items-center gap-1 text-xs px-2 py-1 rounded-full transition-all cursor-pointer active:scale-[0.95] opacity-0 group-hover:opacity-100"
+              style={{ color: 'var(--text-muted)', background: 'var(--bg-secondary)', border: '1px solid var(--border-light)' }}
+              title="Fork conversation from here"
+            >
+              <GitFork size={11} />
+            </button>
+          )}
           {isLocal && (
             <button
               onClick={() => onRetry(message.id, 'cloud')}

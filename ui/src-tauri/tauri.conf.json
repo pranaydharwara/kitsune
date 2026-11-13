@@ -28,6 +28,14 @@
       "csp": null
     }
   },
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDFEM0QyMTA0RTA0MTY2ODEKUldTQlprSGdCQ0U5SGN6QVRXdEkxSURCOHNBeXc5UXNzb25YMkpCeUk1RHFKdWpBMW5vLzJPNkcK",
+      "endpoints": [
+        "https://github.com/pranaydharwara/kitsune/releases/latest/download/latest.json"
+      ]
+    }
+  },
   "bundle": {
     "active": true,
     "targets": ["dmg", "app"],

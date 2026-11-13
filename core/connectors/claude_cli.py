@@ -2,10 +2,35 @@
 
 import asyncio
 import json
+import os
 import shutil
 from collections.abc import AsyncIterator
+from pathlib import Path
 
 from core.connectors.base import Chunk, Prompt, Status, Usage
+
+_EXTRA_PATHS = [
+    "/opt/homebrew/bin",
+    "/usr/local/bin",
+    str(Path.home() / ".npm-global" / "bin"),
+    str(Path.home() / ".nvm" / "versions" / "node"),
+]
+
+
+def _find_claude() -> str | None:
+    found = shutil.which("claude")
+    if found:
+        return found
+    for d in _EXTRA_PATHS:
+        if d.endswith("node"):
+            for child in sorted(Path(d).glob("*/bin/claude"), reverse=True):
+                if child.is_file():
+                    return str(child)
+        else:
+            candidate = os.path.join(d, "claude")
+            if os.path.isfile(candidate) and os.access(candidate, os.X_OK):
+                return candidate
+    return None
 
 
 class ClaudeCliConnector:
@@ -15,7 +40,7 @@ class ClaudeCliConnector:
 
     def __init__(self, model: str = "sonnet"):
         self.model = model
-        self._bin = shutil.which("claude")
+        self._bin = _find_claude()
 
     def available(self) -> Status:
         if not self._bin:
@@ -32,6 +57,7 @@ class ClaudeCliConnector:
             "--output-format", "stream-json",
             "--verbose",
             "--model", self.model,
+            "--dangerously-skip-permissions",
         ]
         if prompt.system:
             cmd.extend(["--system-prompt", prompt.system])
