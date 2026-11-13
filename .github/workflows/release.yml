@@ -138,6 +138,7 @@ jobs:
             See the [changelog](https://github.com/pranaydharwara/kitsune/commits/${{ steps.bump.outputs.tag }}) for details.
           releaseDraft: false
           prerelease: false
+          includeUpdaterJson: false
           args: --target aarch64-apple-darwin
 
       - name: Build Tauri app (Intel)
@@ -153,4 +154,41 @@ jobs:
           releaseName: Kitsune ${{ steps.bump.outputs.tag }}
           releaseDraft: false
           prerelease: false
+          includeUpdaterJson: false
           args: --target x86_64-apple-darwin
+
+      - name: Generate and upload updater JSON
+        if: steps.bump.outputs.skip != 'true'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="${{ steps.bump.outputs.tag }}"
+          VERSION="${{ steps.bump.outputs.new }}"
+          DATE=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+          REPO="pranaydharwara/kitsune"
+
+          # Download signature files from the release
+          gh release download "$TAG" -p "*.sig" -D /tmp/sigs --repo "$REPO"
+
+          AARCH64_SIG=$(cat /tmp/sigs/Kitsune_aarch64.app.tar.gz.sig)
+          X64_SIG=$(cat /tmp/sigs/Kitsune_x64.app.tar.gz.sig)
+
+          cat > /tmp/latest.json << EJSON
+          {
+            "version": "$VERSION",
+            "notes": "See the changelog for details.",
+            "pub_date": "$DATE",
+            "platforms": {
+              "darwin-aarch64": {
+                "signature": "$AARCH64_SIG",
+                "url": "https://github.com/$REPO/releases/download/$TAG/Kitsune_aarch64.app.tar.gz"
+              },
+              "darwin-x86_64": {
+                "signature": "$X64_SIG",
+                "url": "https://github.com/$REPO/releases/download/$TAG/Kitsune_x64.app.tar.gz"
+              }
+            }
+          }
+          EJSON
+
+          gh release upload "$TAG" /tmp/latest.json --repo "$REPO" --clobber
