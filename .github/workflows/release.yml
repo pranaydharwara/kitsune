@@ -167,28 +167,28 @@ jobs:
           DATE=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
           REPO="pranaydharwara/kitsune"
 
-          # Download signature files from the release
-          gh release download "$TAG" -p "*.sig" -D /tmp/sigs --repo "$REPO"
+          AARCH64_SIG=$(cat ui/src-tauri/target/aarch64-apple-darwin/release/bundle/macos/Kitsune.app.tar.gz.sig)
+          X64_SIG=$(cat ui/src-tauri/target/x86_64-apple-darwin/release/bundle/macos/Kitsune.app.tar.gz.sig)
 
-          AARCH64_SIG=$(cat /tmp/sigs/Kitsune_aarch64.app.tar.gz.sig)
-          X64_SIG=$(cat /tmp/sigs/Kitsune_x64.app.tar.gz.sig)
-
-          cat > /tmp/latest.json << EJSON
-          {
-            "version": "$VERSION",
-            "notes": "See the changelog for details.",
-            "pub_date": "$DATE",
-            "platforms": {
-              "darwin-aarch64": {
-                "signature": "$AARCH64_SIG",
-                "url": "https://github.com/$REPO/releases/download/$TAG/Kitsune_aarch64.app.tar.gz"
-              },
-              "darwin-x86_64": {
-                "signature": "$X64_SIG",
-                "url": "https://github.com/$REPO/releases/download/$TAG/Kitsune_x64.app.tar.gz"
+          python3 -c "
+          import json
+          data = {
+              'version': '$VERSION',
+              'notes': 'See the changelog for details.',
+              'pub_date': '$DATE',
+              'platforms': {
+                  'darwin-aarch64': {
+                      'signature': '''$AARCH64_SIG''',
+                      'url': 'https://github.com/$REPO/releases/download/$TAG/Kitsune_aarch64.app.tar.gz'
+                  },
+                  'darwin-x86_64': {
+                      'signature': '''$X64_SIG''',
+                      'url': 'https://github.com/$REPO/releases/download/$TAG/Kitsune_x64.app.tar.gz'
+                  }
               }
-            }
           }
-          EJSON
+          with open('/tmp/latest.json', 'w') as f:
+              json.dump(data, f, indent=2)
+          "
 
           gh release upload "$TAG" /tmp/latest.json --repo "$REPO" --clobber
