@@ -9,7 +9,8 @@
     "lint": "oxlint",
     "preview": "vite preview",
     "test": "npx playwright test",
-    "test:headed": "npx playwright test --headed"
+    "test:headed": "npx playwright test --headed",
+    "tauri": "tauri"
   },
   "dependencies": {
     "@tauri-apps/plugin-dialog": "^2.8.3",
