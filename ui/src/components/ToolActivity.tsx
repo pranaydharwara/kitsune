@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Check, CheckCircle2, ChevronDown, ChevronRight, FileText, GitBranch, ListChecks, Terminal, FolderOpen, Eye, Loader2, X, AlertCircle } from 'lucide-react';
+import { Check, CheckCircle2, ChevronDown, ChevronRight, FileText, GitBranch, ListChecks, Terminal, FolderOpen, Eye, Loader2, X, AlertCircle, Pencil } from 'lucide-react';
 import type { ToolUseEvent } from '../lib/api';
 
 interface ToolActivityProps {
@@ -10,6 +10,7 @@ interface ToolActivityProps {
 
 const TOOL_META: Record<string, { icon: typeof Terminal; label: string; verb: string }> = {
   create_file: { icon: FileText, label: 'Create File', verb: 'Created' },
+  edit_file: { icon: Pencil, label: 'Edit File', verb: 'Edited' },
   read_file: { icon: Eye, label: 'Read File', verb: 'Read' },
   list_files: { icon: FolderOpen, label: 'List Files', verb: 'Listed' },
   run_command: { icon: Terminal, label: 'Run Command', verb: 'Ran' },
@@ -167,6 +168,28 @@ function ToolEventCard({ event }: { event: ToolUseEvent }) {
             </div>
           )}
 
+          {event.tool === 'edit_file' && !!event.arguments.old_string && (
+            <div className="mt-2">
+              <div className="text-[10px] uppercase tracking-wider mb-1" style={{ color: 'var(--text-muted)' }}>
+                Edit
+              </div>
+              <pre
+                className="text-[11px] p-2 rounded-md overflow-auto max-h-[200px]"
+                style={{
+                  background: 'var(--bg-secondary)',
+                  color: 'var(--text-secondary)',
+                  fontFamily: 'monospace',
+                  whiteSpace: 'pre-wrap',
+                  wordBreak: 'break-word',
+                }}
+              >
+                <span style={{ color: '#d63031' }}>- {String(event.arguments.old_string as string).slice(0, 1500)}</span>
+                {'\n'}
+                <span style={{ color: '#00b894' }}>+ {String(event.arguments.new_string as string || '').slice(0, 1500)}</span>
+              </pre>
+            </div>
+          )}
+
           {event.tool === 'create_file' && !!event.arguments.content && (
             <div className="mt-2">
               <div className="text-[10px] uppercase tracking-wider mb-1" style={{ color: 'var(--text-muted)' }}>
@@ -255,7 +278,7 @@ function ToolEventCard({ event }: { event: ToolUseEvent }) {
 }
 
 function _getDetail(event: ToolUseEvent): string {
-  if (event.tool === 'create_file' || event.tool === 'read_file') {
+  if (event.tool === 'create_file' || event.tool === 'read_file' || event.tool === 'edit_file') {
     return (event.arguments.path as string) || '';
   }
   if (event.tool === 'list_files') {
@@ -304,6 +327,10 @@ function _getResultContent(event: ToolUseEvent): string | null {
 
   if (event.tool === 'create_file' && event.result.success) {
     return `Created (${event.result.size} bytes)`;
+  }
+
+  if (event.tool === 'edit_file' && event.result.success) {
+    return `Edited (${event.result.replacements} replacement)`;
   }
 
   if (event.tool === 'think' && event.result.steps) {

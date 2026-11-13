@@ -57,6 +57,7 @@ class ClaudeCliConnector:
             "--output-format", "stream-json",
             "--verbose",
             "--model", self.model,
+            "--dangerously-skip-permissions",
         ]
         if prompt.system:
             cmd.extend(["--system-prompt", prompt.system])

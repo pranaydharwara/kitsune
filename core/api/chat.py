@@ -429,9 +429,10 @@ TOOL_SYSTEM_SUFFIX = (
     "\n\nYou have tools to interact with the project files directly. "
     "IMPORTANT: When the user asks you to create, write, edit, or run something, "
     "you MUST use the tools — do NOT just show code in a code block. "
-    "Use create_file to make files, run_command to execute commands, "
-    "read_file to read files, list_files to browse directories, "
-    "git_operation for git tasks. "
+    "Use create_file to make new files, edit_file to surgically edit existing files, "
+    "run_command to execute commands, read_file to read files, "
+    "list_files to browse directories, git_operation for git tasks. "
+    "Prefer edit_file over create_file when modifying existing files. "
     "For complex tasks that require multiple steps, use the think tool FIRST "
     "to plan your approach, then execute each step, and finally use verify "
     "to confirm the results. After using tools, briefly confirm what you did."
@@ -511,6 +512,10 @@ def _tool_summary(tool_name: str, arguments: dict, result: dict) -> str:
         path = arguments.get("path", "?")
         size = result.get("size", 0)
         return f"**Created** `{path}` ({size} bytes)"
+
+    if tool_name == "edit_file":
+        path = arguments.get("path", "?")
+        return f"**Edited** `{path}`"
 
     if tool_name == "run_command":
         cmd = arguments.get("command", "?")

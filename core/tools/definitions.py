@@ -66,6 +66,31 @@ TOOL_SCHEMAS = [
     {
         "type": "function",
         "function": {
+            "name": "edit_file",
+            "description": "Make a surgical edit to an existing file by replacing a specific string with new content. Use this instead of create_file when you only need to change part of a file. The old_string must match exactly (including whitespace and indentation).",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "path": {
+                        "type": "string",
+                        "description": "File path relative to the project root",
+                    },
+                    "old_string": {
+                        "type": "string",
+                        "description": "The exact text to find and replace. Must be unique within the file.",
+                    },
+                    "new_string": {
+                        "type": "string",
+                        "description": "The replacement text",
+                    },
+                },
+                "required": ["path", "old_string", "new_string"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
             "name": "run_command",
             "description": "Run a shell command in the project directory. Use for installing packages, running tests, or other CLI tasks.",
             "parameters": {
@@ -169,6 +194,8 @@ def _safe_path(project_root: str, relative: str) -> Path | None:
 def execute_tool(name: str, arguments: dict, project_path: str) -> dict:
     if name == "create_file":
         return _create_file(project_path, arguments.get("path", ""), arguments.get("content", ""))
+    elif name == "edit_file":
+        return _edit_file(project_path, arguments.get("path", ""), arguments.get("old_string", ""), arguments.get("new_string", ""))
     elif name == "read_file":
         return _read_file(project_path, arguments.get("path", ""))
     elif name == "list_files":
@@ -194,6 +221,28 @@ def _create_file(project_root: str, path: str, content: str) -> dict:
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_text(content, encoding="utf-8")
         return {"success": True, "path": path, "size": len(content)}
+    except Exception as e:
+        return {"error": str(e)}
+
+
+def _edit_file(project_root: str, path: str, old_string: str, new_string: str) -> dict:
+    target = _safe_path(project_root, path)
+    if not target:
+        return {"error": "Path escapes project directory"}
+    if not target.is_file():
+        return {"error": f"File not found: {path}"}
+    if old_string == new_string:
+        return {"error": "old_string and new_string are identical"}
+    try:
+        content = target.read_text(encoding="utf-8")
+        count = content.count(old_string)
+        if count == 0:
+            return {"error": "old_string not found in file"}
+        if count > 1:
+            return {"error": f"old_string matches {count} locations — make it more specific"}
+        new_content = content.replace(old_string, new_string, 1)
+        target.write_text(new_content, encoding="utf-8")
+        return {"success": True, "path": path, "replacements": 1}
     except Exception as e:
         return {"error": str(e)}
 

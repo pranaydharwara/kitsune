@@ -50,7 +50,7 @@ class ErrorCollector:
 
 
 def _summarize_args(tool_name: str, arguments: dict) -> str:
-    if tool_name == "create_file" or tool_name == "read_file":
+    if tool_name in ("create_file", "read_file", "edit_file"):
         return arguments.get("path", "?")
     if tool_name == "run_command":
         return arguments.get("command", "?")[:100]
