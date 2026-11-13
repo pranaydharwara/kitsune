@@ -1,15 +1,24 @@
 import { useEffect, useRef, useState } from 'react';
-import { X, Eye, EyeOff, Trash2, Download, Upload } from 'lucide-react';
+import { X, Eye, EyeOff, Trash2, Download, Upload, RefreshCw } from 'lucide-react';
 import type { Settings as SettingsType, UsageStats } from '../lib/api';
+import type { UpdateStatus } from '../hooks/useUpdater';
 import { getSettings, updateSettings, clearApiKey, getUsage, exportAll, importConversations } from '../lib/api';
 
 interface SettingsProps {
   open: boolean;
   onClose: () => void;
   onRefresh?: () => void;
+  updater?: {
+    status: UpdateStatus;
+    version: string | null;
+    progress: number;
+    checkForUpdate: () => Promise<unknown>;
+    installUpdate: () => Promise<void>;
+  };
 }
 
-export function Settings({ open, onClose, onRefresh }: SettingsProps) {
+export function Settings({ open, onClose, onRefresh, updater }: SettingsProps) {
+  const [checking, setChecking] = useState(false);
   const [settings, setSettings] = useState<SettingsType | null>(null);
   const [usage, setUsage] = useState<UsageStats | null>(null);
   const [apiKey, setApiKey] = useState('');
@@ -163,6 +172,49 @@ export function Settings({ open, onClose, onRefresh }: SettingsProps) {
                   ))}
                 </div>
               </Section>
+
+              {updater && (
+                <Section title="About" description={`Kitsune v${__APP_VERSION__}`}>
+                  {updater.status === 'available' ? (
+                    <div className="flex items-center gap-3">
+                      <span className="text-xs" style={{ color: 'var(--text-secondary)' }}>
+                        v{updater.version} available
+                      </span>
+                      <button
+                        onClick={updater.installUpdate}
+                        className="px-3 py-1.5 rounded-lg text-xs font-medium cursor-pointer transition-all active:scale-[0.97]"
+                        style={{ background: 'var(--accent)', color: '#fff' }}
+                      >
+                        Update now
+                      </button>
+                    </div>
+                  ) : updater.status === 'downloading' ? (
+                    <div className="flex items-center gap-2">
+                      <RefreshCw size={12} className="animate-spin" style={{ color: 'var(--accent)' }} />
+                      <span className="text-xs" style={{ color: 'var(--text-secondary)' }}>
+                        Downloading… {updater.progress}%
+                      </span>
+                    </div>
+                  ) : updater.status === 'ready' ? (
+                    <span className="text-xs" style={{ color: 'var(--accent)' }}>
+                      Update installed — reopen to apply
+                    </span>
+                  ) : (
+                    <button
+                      onClick={async () => {
+                        setChecking(true);
+                        const result = await updater.checkForUpdate();
+                        if (!result) setTimeout(() => setChecking(false), 2000);
+                      }}
+                      disabled={checking}
+                      className="px-3 py-1.5 rounded-lg text-xs font-medium cursor-pointer transition-all active:scale-[0.97] disabled:opacity-50"
+                      style={{ background: 'var(--bg-secondary)', color: 'var(--text-primary)', border: '1px solid var(--border-light)' }}
+                    >
+                      {checking ? 'Up to date ✓' : 'Check for updates'}
+                    </button>
+                  )}
+                </Section>
+              )}
             </div>
           )}
 
