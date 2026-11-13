@@ -1,5 +1,7 @@
 # Kitsune
 core/static/
+tauri-updater-keys.txt
+tauri-updater-keys.txt.pub
 *.db
 *.db-journal
 *.db-wal

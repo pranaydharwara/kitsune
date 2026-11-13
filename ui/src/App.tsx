@@ -6,6 +6,8 @@ import { Settings } from './components/Settings';
 import { Sidebar } from './components/Sidebar';
 import { ToolActivity } from './components/ToolActivity';
 import { ContextPanel } from './components/ContextPanel';
+import { UpdateBanner } from './components/UpdateBanner';
+import { useUpdater } from './hooks/useUpdater';
 import type { Conversation, MentionContext, Message, ModelPullEvent, ModelsResponse, Project, RouteInfo, ToolUseEvent } from './lib/api';
 import {
   cancelStream,
@@ -48,6 +50,7 @@ export default function App() {
   });
   const [modelPull, setModelPull] = useState<ModelPullEvent | null>(null);
   const abortRef = useRef<AbortController | null>(null);
+  const updater = useUpdater();
 
   useEffect(() => {
     try { localStorage.setItem('kitsune:toolPanelOpen', toolPanelOpen ? '1' : '0'); } catch {}
@@ -363,6 +366,13 @@ export default function App() {
         onEditInstructions={setInstructionsProjectId}
       />
       <main className="flex-1 flex flex-col min-w-0">
+        <UpdateBanner
+          status={updater.status}
+          version={updater.version}
+          progress={updater.progress}
+          onInstall={updater.installUpdate}
+          onDismiss={updater.dismiss}
+        />
         <ChatThread
           messages={messages}
           streamingText={streamingText}

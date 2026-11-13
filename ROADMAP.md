@@ -96,7 +96,7 @@ Bring agentic capabilities closer to Claude Code level.
 - [ ] Provider-agnostic model picker
 
 ### Platform
-- [ ] Auto-update via Tauri updater
+- [x] Auto-update via Tauri updater
 - [ ] Linux build
 - [ ] Crash reporting / diagnostics export
 - [ ] Themes / appearance customization
