@@ -2,24 +2,104 @@ name: Release
 
 on:
   push:
-    tags:
-      - 'v*'
+    branches:
+      - main
+    paths-ignore:
+      - '*.md'
 
 permissions:
   contents: write
 
 jobs:
-  build:
+  release:
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Get current version
+        id: version
+        run: |
+          VERSION=$(python3 -c "import json; print(json.load(open('ui/src-tauri/tauri.conf.json'))['version'])")
+          echo "current=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "Current version: $VERSION"
+
+      - name: Bump patch version
+        id: bump
+        run: |
+          CURRENT="${{ steps.version.outputs.current }}"
+          IFS='.' read -r MAJOR MINOR PATCH <<< "$CURRENT"
+          PATCH=$((PATCH + 1))
+          NEW="$MAJOR.$MINOR.$PATCH"
+          TAG="v$NEW"
+
+          # Check if this tag already exists (skip release if so)
+          if git rev-parse "$TAG" >/dev/null 2>&1; then
+            echo "Tag $TAG already exists, skipping release"
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          echo "new=$NEW" >> "$GITHUB_OUTPUT"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "skip=false" >> "$GITHUB_OUTPUT"
+          echo "Bumping to: $NEW ($TAG)"
+
+      - name: Update version in config files
+        if: steps.bump.outputs.skip != 'true'
+        run: |
+          NEW="${{ steps.bump.outputs.new }}"
+
+          # tauri.conf.json
+          python3 -c "
+          import json
+          with open('ui/src-tauri/tauri.conf.json') as f:
+              conf = json.load(f)
+          conf['version'] = '$NEW'
+          with open('ui/src-tauri/tauri.conf.json', 'w') as f:
+              json.dump(conf, f, indent=2)
+              f.write('\n')
+          "
+
+          # Cargo.toml
+          sed -i '' "s/^version = \".*\"/version = \"$NEW\"/" ui/src-tauri/Cargo.toml
+
+          # package.json
+          python3 -c "
+          import json
+          with open('ui/package.json') as f:
+              pkg = json.load(f)
+          pkg['version'] = '$NEW'
+          with open('ui/package.json', 'w') as f:
+              json.dump(pkg, f, indent=2)
+              f.write('\n')
+          "
+
+          # pyproject.toml
+          sed -i '' "s/^version = \".*\"/version = \"$NEW\"/" pyproject.toml
+
+      - name: Commit version bump and tag
+        if: steps.bump.outputs.skip != 'true'
+        run: |
+          TAG="${{ steps.bump.outputs.tag }}"
+          NEW="${{ steps.bump.outputs.new }}"
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add ui/src-tauri/tauri.conf.json ui/src-tauri/Cargo.toml ui/package.json pyproject.toml
+          git commit -m "Bump version to $NEW [skip ci]"
+          git tag "$TAG"
+          git push origin main --tags
 
       - name: Install Rust
+        if: steps.bump.outputs.skip != 'true'
         uses: dtolnay/rust-toolchain@stable
         with:
           targets: aarch64-apple-darwin,x86_64-apple-darwin
 
       - name: Setup Node
+        if: steps.bump.outputs.skip != 'true'
         uses: actions/setup-node@v4
         with:
           node-version: 22
@@ -27,20 +107,24 @@ jobs:
           cache-dependency-path: ui/package-lock.json
 
       - name: Setup Python
+        if: steps.bump.outputs.skip != 'true'
         uses: actions/setup-python@v5
         with:
           python-version: '3.13'
 
       - name: Install Python deps
+        if: steps.bump.outputs.skip != 'true'
         run: |
           python -m pip install --upgrade pip
           pip install -e .
 
       - name: Install frontend deps
+        if: steps.bump.outputs.skip != 'true'
         working-directory: ui
         run: npm ci
 
       - name: Build Tauri app (Apple Silicon)
+        if: steps.bump.outputs.skip != 'true'
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -48,15 +132,16 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
           projectPath: ui
-          tagName: ${{ github.ref_name }}
-          releaseName: Kitsune ${{ github.ref_name }}
+          tagName: ${{ steps.bump.outputs.tag }}
+          releaseName: Kitsune ${{ steps.bump.outputs.tag }}
           releaseBody: |
-            See the [changelog](https://github.com/pranaydharwara/kitsune/commits/${{ github.ref_name }}) for details.
+            See the [changelog](https://github.com/pranaydharwara/kitsune/commits/${{ steps.bump.outputs.tag }}) for details.
           releaseDraft: false
           prerelease: false
           args: --target aarch64-apple-darwin
 
       - name: Build Tauri app (Intel)
+        if: steps.bump.outputs.skip != 'true'
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -64,8 +149,8 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
           projectPath: ui
-          tagName: ${{ github.ref_name }}
-          releaseName: Kitsune ${{ github.ref_name }}
+          tagName: ${{ steps.bump.outputs.tag }}
+          releaseName: Kitsune ${{ steps.bump.outputs.tag }}
           releaseDraft: false
           prerelease: false
           args: --target x86_64-apple-darwin
