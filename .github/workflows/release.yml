@@ -141,6 +141,10 @@ jobs:
           includeUpdaterJson: false
           args: --target aarch64-apple-darwin
 
+      - name: Save Apple Silicon signature
+        if: steps.bump.outputs.skip != 'true'
+        run: cp ui/src-tauri/target/aarch64-apple-darwin/release/bundle/macos/Kitsune.app.tar.gz.sig /tmp/aarch64.sig
+
       - name: Build Tauri app (Intel)
         if: steps.bump.outputs.skip != 'true'
         uses: tauri-apps/tauri-action@v0
@@ -167,7 +171,7 @@ jobs:
           DATE=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
           REPO="pranaydharwara/kitsune"
 
-          AARCH64_SIG=$(cat ui/src-tauri/target/aarch64-apple-darwin/release/bundle/macos/Kitsune.app.tar.gz.sig)
+          AARCH64_SIG=$(cat /tmp/aarch64.sig)
           X64_SIG=$(cat ui/src-tauri/target/x86_64-apple-darwin/release/bundle/macos/Kitsune.app.tar.gz.sig)
 
           python3 -c "
