@@ -1,3 +1,4 @@
+# Auto-release on merge to main
 name: Release
 
 on:
