@@ -123,62 +123,36 @@ jobs:
         working-directory: ui
         run: npm ci
 
-      - name: Build Apple Silicon
+      - name: Build Tauri app (Apple Silicon)
         if: steps.bump.outputs.skip != 'true'
-        working-directory: ui
-        env:
-          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
-          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
-        run: npm run tauri build -- --target aarch64-apple-darwin
-
-      - name: Build Intel
-        if: steps.bump.outputs.skip != 'true'
-        working-directory: ui
-        env:
-          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
-          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
-        run: npm run tauri build -- --target x86_64-apple-darwin
-
-      - name: Create release with all assets
-        if: steps.bump.outputs.skip != 'true'
+        uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          TAG="${{ steps.bump.outputs.tag }}"
-          VERSION="${{ steps.bump.outputs.new }}"
-          DATE=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
-          REPO="pranaydharwara/kitsune"
-          BUILD="ui/src-tauri/target"
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        with:
+          projectPath: ui
+          tagName: ${{ steps.bump.outputs.tag }}
+          releaseName: Kitsune ${{ steps.bump.outputs.tag }}
+          releaseBody: |
+            See the [changelog](https://github.com/pranaydharwara/kitsune/commits/${{ steps.bump.outputs.tag }}) for details.
+          releaseDraft: false
+          prerelease: false
+          includeUpdaterJson: false
+          args: --target aarch64-apple-darwin
 
-          AARCH64_SIG=$(cat "$BUILD/aarch64-apple-darwin/release/bundle/macos/Kitsune.app.tar.gz.sig")
-          X64_SIG=$(cat "$BUILD/x86_64-apple-darwin/release/bundle/macos/Kitsune.app.tar.gz.sig")
-
-          python3 -c "
-          import json
-          data = {
-              'version': '$VERSION',
-              'notes': 'See the changelog for details.',
-              'pub_date': '$DATE',
-              'platforms': {
-                  'darwin-aarch64': {
-                      'signature': '''$AARCH64_SIG''',
-                      'url': 'https://github.com/$REPO/releases/download/$TAG/Kitsune_aarch64.app.tar.gz'
-                  },
-                  'darwin-x86_64': {
-                      'signature': '''$X64_SIG''',
-                      'url': 'https://github.com/$REPO/releases/download/$TAG/Kitsune_x64.app.tar.gz'
-                  }
-              }
-          }
-          with open('/tmp/latest.json', 'w') as f:
-              json.dump(data, f, indent=2)
-          "
-
-          gh release create "$TAG" \
-            --title "Kitsune $TAG" \
-            --notes "See the [changelog](https://github.com/$REPO/commits/$TAG) for details." \
-            "$BUILD/aarch64-apple-darwin/release/bundle/dmg/"*.dmg \
-            "$BUILD/x86_64-apple-darwin/release/bundle/dmg/"*.dmg \
-            "$BUILD/aarch64-apple-darwin/release/bundle/macos/Kitsune.app.tar.gz#Kitsune_aarch64.app.tar.gz" \
-            "$BUILD/x86_64-apple-darwin/release/bundle/macos/Kitsune.app.tar.gz#Kitsune_x64.app.tar.gz" \
-            /tmp/latest.json
+      - name: Build Tauri app (Intel)
+        if: steps.bump.outputs.skip != 'true'
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        with:
+          projectPath: ui
+          tagName: ${{ steps.bump.outputs.tag }}
+          releaseName: Kitsune ${{ steps.bump.outputs.tag }}
+          releaseDraft: false
+          prerelease: false
+          includeUpdaterJson: true
+          args: --target x86_64-apple-darwin
