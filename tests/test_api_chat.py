@@ -317,7 +317,7 @@ def test_is_claude_available_cached():
 
 def test_is_claude_available_uncached():
     from core.api.chat import _claude_available
-    _claude_available["ts"] = 0
+    _claude_available["ts"] = time.monotonic() - 120
     _claude_available["ready"] = False
 
     with patch("core.api.chat.ClaudeSdkConnector") as MockSdk, \
@@ -335,7 +335,7 @@ def test_is_claude_available_uncached():
 
 def test_is_claude_available_none_ready():
     from core.api.chat import _claude_available
-    _claude_available["ts"] = 0
+    _claude_available["ts"] = time.monotonic() - 120
 
     with patch("core.api.chat.ClaudeSdkConnector") as MockSdk, \
          patch("core.api.chat.ClaudeCliConnector") as MockCli:
