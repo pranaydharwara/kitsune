@@ -47,4 +47,4 @@ asyncio_mode = "auto"
 testpaths = ["tests"]
 
 [tool.coverage.run]
-omit = ["core/menubar.py"]
+omit = ["core/menubar.py", "core/cli.py", "core/main.py"]
