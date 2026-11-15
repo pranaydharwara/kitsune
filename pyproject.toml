@@ -1,6 +1,6 @@
 [project]
 name = "kitsune-core"
-version = "0.1.10"
+version = "0.1.11"
 description = "Local-first AI chat harness for macOS"
 readme = "README.md"
 license = "MIT"
