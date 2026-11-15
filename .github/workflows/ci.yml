@@ -28,7 +28,7 @@ jobs:
         run: ruff check core/ || true
 
       - name: Test with coverage
-        run: pytest --cov=core --cov-report=term-missing --cov-report=json:coverage-python.json
+        run: pytest --cov=core --cov-report=term-missing --cov-report=json:coverage-python.json --cov-fail-under=85
 
       - name: Upload coverage artifact
         uses: actions/upload-artifact@v4
@@ -92,53 +92,53 @@ jobs:
       - name: Generate coverage comment
         id: comment
         run: |
+          THRESHOLD=85
           BODY="## 📊 Coverage Report\n\n"
+          BODY+="| Component | Coverage | Lines | Gate (≥${THRESHOLD}%) |\n"
+          BODY+="|-----------|----------|-------|------|\n"
 
           if [ -f coverage/coverage-python.json ]; then
-            PY_PCT=$(python3 -c "
+            PY_RAW=$(python3 -c "
           import json
           with open('coverage/coverage-python.json') as f:
               d = json.load(f)
           total = d.get('totals', {})
-          print(f\"{total.get('percent_covered_display', '0')}%\")
+          pct = total.get('percent_covered', 0)
+          covered = total.get('covered_lines', 0)
+          num = total.get('num_statements', 0)
+          print(f'{pct}|{covered}/{num}')
           ")
-            PY_STMTS=$(python3 -c "
-          import json
-          with open('coverage/coverage-python.json') as f:
-              d = json.load(f)
-          total = d.get('totals', {})
-          print(f\"{total.get('covered_lines', 0)}/{total.get('num_statements', 0)}\")
-          ")
-            BODY+="| Component | Coverage | Lines |\n"
-            BODY+="|-----------|----------|-------|\n"
-            BODY+="| 🐍 Python (core/) | **${PY_PCT}** | ${PY_STMTS} |\n"
+            PY_NUM=$(echo "$PY_RAW" | cut -d'|' -f1)
+            PY_PCT=$(python3 -c "print(f'{float(\"$PY_NUM\"):.0f}%')")
+            PY_STMTS=$(echo "$PY_RAW" | cut -d'|' -f2)
+            PY_PASS=$(python3 -c "print('✅' if float('$PY_NUM') >= $THRESHOLD else '❌')")
+            BODY+="| 🐍 Python (core/) | **${PY_PCT}** | ${PY_STMTS} | ${PY_PASS} |\n"
           else
-            BODY+="| Component | Coverage | Lines |\n"
-            BODY+="|-----------|----------|-------|\n"
-            BODY+="| 🐍 Python (core/) | ⚠️ no data | - |\n"
+            BODY+="| 🐍 Python (core/) | ⚠️ no data | - | - |\n"
           fi
 
           if [ -f coverage/coverage-summary.json ]; then
-            FE_PCT=$(python3 -c "
+            FE_RAW=$(python3 -c "
           import json
           with open('coverage/coverage-summary.json') as f:
               d = json.load(f)
           total = d.get('total', {})
           lines = total.get('lines', {})
-          print(f\"{lines.get('pct', 0)}%\")
+          pct = lines.get('pct', 0)
+          covered = lines.get('covered', 0)
+          num = lines.get('total', 0)
+          print(f'{pct}|{covered}/{num}')
           ")
-            FE_LINES=$(python3 -c "
-          import json
-          with open('coverage/coverage-summary.json') as f:
-              d = json.load(f)
-          total = d.get('total', {})
-          lines = total.get('lines', {})
-          print(f\"{lines.get('covered', 0)}/{lines.get('total', 0)}\")
-          ")
-            BODY+="| ⚛️ Frontend (ui/) | **${FE_PCT}** | ${FE_LINES} |\n"
+            FE_NUM=$(echo "$FE_RAW" | cut -d'|' -f1)
+            FE_PCT=$(python3 -c "print(f'{float(\"$FE_NUM\"):.0f}%')")
+            FE_LINES=$(echo "$FE_RAW" | cut -d'|' -f2)
+            FE_PASS=$(python3 -c "print('✅' if float('$FE_NUM') >= $THRESHOLD else '❌')")
+            BODY+="| ⚛️ Frontend (ui/) | **${FE_PCT}** | ${FE_LINES} | ${FE_PASS} |\n"
           else
-            BODY+="| ⚛️ Frontend (ui/) | ⚠️ no data | - |\n"
+            BODY+="| ⚛️ Frontend (ui/) | ⚠️ no data | - | - |\n"
           fi
+
+          BODY+="\n> Minimum coverage threshold: **${THRESHOLD}%**"
 
           EOF=$(dd if=/dev/urandom bs=15 count=1 status=none | base64)
           echo "body<<$EOF" >> "$GITHUB_OUTPUT"
