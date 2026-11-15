@@ -34,7 +34,6 @@ vi.mock('./lib/api', () => ({
   getMentionCompletions: vi.fn().mockResolvedValue({ completions: [] }),
   getProjectInstructions: vi.fn().mockResolvedValue({ found: false, file: null, content: null }),
   setProjectInstructions: vi.fn().mockResolvedValue(undefined),
-  getSettings: vi.fn().mockResolvedValue({ anthropic_api_key: '', has_api_key: false }),
   updateSettings: vi.fn().mockResolvedValue(undefined),
   clearApiKey: vi.fn().mockResolvedValue(undefined),
   getUsage: vi.fn().mockResolvedValue({ total_messages: 0, cloud_messages: 0, local_messages: 0, total_tokens_in: 0, total_tokens_out: 0, total_cost: 0 }),
@@ -179,7 +178,6 @@ describe('App', () => {
     await waitFor(() => expect(screen.getByText('To Delete')).toBeTruthy())
     fireEvent.click(screen.getByText('To Delete'))
     await waitFor(() => expect(mockGetMessages).toHaveBeenCalled())
-    const deleteButtons = screen.getAllByRole('button').filter(b => b.getAttribute('title')?.includes(''))
     const trashBtns = screen.getAllByRole('button')
     const trashBtn = trashBtns.find(b => b.querySelector('svg') && b.closest('.group'))
     if (trashBtn) fireEvent.click(trashBtn)
@@ -642,11 +640,10 @@ describe('App', () => {
   })
 
   it('handles handleCancel calling cancelStream', async () => {
-    let resolveToken: (() => void) | null = null
     mockStreamChat.mockImplementation((_text: string, _id: string | null, callbacks: {
       onToken: (t: string) => void
     }) => {
-      new Promise<void>(r => { resolveToken = r }).then(() => callbacks.onToken('tok'))
+      new Promise<void>(() => {}).then(() => callbacks.onToken('tok'))
       return new AbortController()
     })
     mockListConversations.mockResolvedValue([

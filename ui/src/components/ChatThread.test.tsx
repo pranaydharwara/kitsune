@@ -185,7 +185,7 @@ describe('ChatThread', () => {
       { id: 'm1', conversation_id: 'c1', role: 'user', text: 'Hi', created_at: new Date().toISOString() },
     ]
     const resolvedMentions: ResolvedMention[] = [
-      { type: 'file', arg: 'missing.py', status: 'error', content: null },
+      { type: 'file', arg: 'missing.py', status: 'not_found' as const, content: undefined },
     ]
     render(<ChatThread {...baseProps} messages={messages} resolvedMentions={resolvedMentions} isStreaming={true} streamingText="Looking..." />)
     expect(screen.getByText('not found')).toBeTruthy()

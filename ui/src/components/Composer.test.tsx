@@ -124,7 +124,7 @@ describe('Composer', () => {
 
   it('opens local model menu on click', () => {
     const modelsWithLocal: ModelsResponse = {
-      local: [{ id: 'llama3', name: 'Llama 3', size: '8B' }],
+      local: [{ id: 'llama3', name: 'Llama 3', size: '8B', provider: 'local' as const }],
       cloud: [],
     }
     render(<Composer {...baseProps} models={modelsWithLocal} mode="local" />)
@@ -135,7 +135,7 @@ describe('Composer', () => {
 
   it('shows model size in local model menu', () => {
     const modelsWithLocal: ModelsResponse = {
-      local: [{ id: 'llama3', name: 'Llama 3', size: '8B' }],
+      local: [{ id: 'llama3', name: 'Llama 3', size: '8B', provider: 'local' as const }],
       cloud: [],
     }
     render(<Composer {...baseProps} models={modelsWithLocal} mode="local" />)
@@ -146,7 +146,7 @@ describe('Composer', () => {
   it('opens cloud model menu on click', () => {
     const modelsWithCloud: ModelsResponse = {
       local: [],
-      cloud: [{ id: 'claude-sonnet', name: 'Sonnet', family: 'Claude' }],
+      cloud: [{ id: 'claude-sonnet', name: 'Sonnet', family: 'Claude', provider: 'claude' as const }],
     }
     render(<Composer {...baseProps} models={modelsWithCloud} mode="cloud" />)
     fireEvent.click(screen.getByText('Cloud'))
@@ -157,8 +157,8 @@ describe('Composer', () => {
     const modelsWithCloud: ModelsResponse = {
       local: [],
       cloud: [
-        { id: 'claude-sonnet', name: 'Sonnet', family: 'Claude' },
-        { id: 'claude-opus', name: 'Opus', family: 'Claude' },
+        { id: 'claude-sonnet', name: 'Sonnet', family: 'Claude', provider: 'claude' as const },
+        { id: 'claude-opus', name: 'Opus', family: 'Claude', provider: 'claude' as const },
       ],
     }
     render(<Composer {...baseProps} models={modelsWithCloud} mode="cloud" />)
@@ -171,7 +171,7 @@ describe('Composer', () => {
   it('selects a model from the menu', () => {
     const onSelect = vi.fn()
     const modelsWithLocal: ModelsResponse = {
-      local: [{ id: 'llama3', name: 'Llama 3', size: '8B' }],
+      local: [{ id: 'llama3', name: 'Llama 3', size: '8B', provider: 'local' as const }],
       cloud: [],
     }
     render(<Composer {...baseProps} onSelect={onSelect} models={modelsWithLocal} mode="local" />)
@@ -183,7 +183,7 @@ describe('Composer', () => {
   it('selects auto from model menu', () => {
     const onSelect = vi.fn()
     const modelsWithLocal: ModelsResponse = {
-      local: [{ id: 'llama3', name: 'Llama 3', size: '8B' }],
+      local: [{ id: 'llama3', name: 'Llama 3', size: '8B', provider: 'local' as const }],
       cloud: [],
     }
     render(<Composer {...baseProps} onSelect={onSelect} models={modelsWithLocal} mode="local" />)
@@ -194,7 +194,7 @@ describe('Composer', () => {
 
   it('shows selected model name in mode label', () => {
     const modelsWithLocal: ModelsResponse = {
-      local: [{ id: 'llama3', name: 'Llama 3', size: '8B' }],
+      local: [{ id: 'llama3', name: 'Llama 3', size: '8B', provider: 'local' as const }],
       cloud: [],
     }
     render(<Composer {...baseProps} models={modelsWithLocal} mode="local" selectedModel="llama3" />)
@@ -203,7 +203,7 @@ describe('Composer', () => {
 
   it('closes menu on second click', () => {
     const modelsWithLocal: ModelsResponse = {
-      local: [{ id: 'llama3', name: 'Llama 3', size: '8B' }],
+      local: [{ id: 'llama3', name: 'Llama 3', size: '8B', provider: 'local' as const }],
       cloud: [],
     }
     render(<Composer {...baseProps} models={modelsWithLocal} mode="local" />)
@@ -214,7 +214,7 @@ describe('Composer', () => {
 
   it('closes menu on outside click', () => {
     const modelsWithLocal: ModelsResponse = {
-      local: [{ id: 'llama3', name: 'Llama 3', size: '8B' }],
+      local: [{ id: 'llama3', name: 'Llama 3', size: '8B', provider: 'local' as const }],
       cloud: [],
     }
     render(<Composer {...baseProps} models={modelsWithLocal} mode="local" />)
@@ -260,8 +260,8 @@ describe('Composer', () => {
   it('highlights selected model in menu', () => {
     const modelsWithLocal: ModelsResponse = {
       local: [
-        { id: 'llama3', name: 'Llama 3', size: '8B' },
-        { id: 'qwen', name: 'Qwen', size: '7B' },
+        { id: 'llama3', name: 'Llama 3', size: '8B', provider: 'local' as const },
+        { id: 'qwen', name: 'Qwen', size: '7B', provider: 'local' as const },
       ],
       cloud: [],
     }
@@ -272,7 +272,7 @@ describe('Composer', () => {
   it('shows selected cloud model name in label', () => {
     const modelsWithCloud: ModelsResponse = {
       local: [],
-      cloud: [{ id: 'claude-sonnet', name: 'Sonnet', family: 'Claude' }],
+      cloud: [{ id: 'claude-sonnet', name: 'Sonnet', family: 'Claude', provider: 'claude' as const }],
     }
     render(<Composer {...baseProps} models={modelsWithCloud} mode="cloud" selectedModel="claude-sonnet" />)
     expect(screen.getByText('Sonnet')).toBeTruthy()
