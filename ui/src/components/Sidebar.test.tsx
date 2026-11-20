@@ -14,6 +14,7 @@ const baseProps = {
   onDelete: vi.fn(),
   onStar: vi.fn(),
   onOpenSettings: vi.fn(),
+  onOpenStatus: vi.fn(),
   onAddProject: vi.fn(),
   onAddProjectPath: vi.fn(),
   onCancelAddProject: vi.fn(),
