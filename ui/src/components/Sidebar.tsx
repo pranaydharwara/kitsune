@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { BookOpen, ChevronDown, ChevronRight, FolderPlus, Plus, Search, Settings, Star, Trash2, X } from 'lucide-react';
+import { Activity, BookOpen, ChevronDown, ChevronRight, FolderPlus, Plus, Search, Settings, Star, Trash2, X } from 'lucide-react';
 import type { Conversation, Project } from '../lib/api';
 
 interface SidebarProps {
@@ -13,6 +13,7 @@ interface SidebarProps {
   onDelete: (id: string) => void;
   onStar: (id: string, starred: boolean) => void;
   onOpenSettings: () => void;
+  onOpenStatus: () => void;
   onAddProject: () => void;
   onAddProjectPath: (path: string) => void;
   onCancelAddProject: () => void;
@@ -32,6 +33,7 @@ export function Sidebar({
   onDelete,
   onStar,
   onOpenSettings,
+  onOpenStatus,
   onAddProject,
   onAddProjectPath,
   onCancelAddProject,
@@ -274,13 +276,23 @@ export function Sidebar({
           <span className="font-medium" style={{ color: 'var(--text-secondary)', fontSize: '13px' }}>
             Kitsune
           </span>
-          <button
-            onClick={onOpenSettings}
-            className="ml-auto p-1.5 rounded-lg cursor-pointer transition-all active:scale-[0.9]"
-            style={{ color: 'var(--text-muted)' }}
-          >
-            <Settings size={15} />
-          </button>
+          <div className="ml-auto flex items-center gap-0.5">
+            <button
+              onClick={onOpenStatus}
+              className="p-1.5 rounded-lg cursor-pointer transition-all active:scale-[0.9]"
+              style={{ color: 'var(--text-muted)' }}
+              title="System status"
+            >
+              <Activity size={15} />
+            </button>
+            <button
+              onClick={onOpenSettings}
+              className="p-1.5 rounded-lg cursor-pointer transition-all active:scale-[0.9]"
+              style={{ color: 'var(--text-muted)' }}
+            >
+              <Settings size={15} />
+            </button>
+          </div>
         </div>
       </div>
     </aside>

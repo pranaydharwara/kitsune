@@ -139,6 +139,30 @@ export interface ModelsResponse {
   cloud: CloudModel[];
 }
 
+export interface StatusResponse {
+  ollama: {
+    installed: boolean;
+    running: boolean;
+    models: string[];
+    url: string;
+  };
+  claude: {
+    available: boolean;
+    has_api_key: boolean;
+  };
+  default_model: string;
+}
+
+export async function getStatus(): Promise<StatusResponse> {
+  const res = await fetch(`${BASE}/status`);
+  return res.json();
+}
+
+export async function startOllama(): Promise<{ ok: boolean; status?: string; error?: string }> {
+  const res = await fetch(`${BASE}/ollama/start`, { method: 'POST' });
+  return res.json();
+}
+
 export async function listModels(): Promise<ModelsResponse> {
   const res = await fetch(`${BASE}/models`);
   if (!res.ok) return { local: [], cloud: [] };

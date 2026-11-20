@@ -6,6 +6,7 @@ import { Settings } from './components/Settings';
 import { Sidebar } from './components/Sidebar';
 import { ToolActivity } from './components/ToolActivity';
 import { ContextPanel } from './components/ContextPanel';
+import { StatusPage } from './components/StatusPage';
 import { UpdateBanner } from './components/UpdateBanner';
 import { useUpdater } from './hooks/useUpdater';
 import type { Conversation, MentionContext, Message, ModelPullEvent, ModelsResponse, Project, RouteInfo, ToolUseEvent } from './lib/api';
@@ -49,6 +50,7 @@ export default function App() {
     try { return localStorage.getItem('kitsune:contextPanelOpen') === '1'; } catch { return false; }
   });
   const [modelPull, setModelPull] = useState<ModelPullEvent | null>(null);
+  const [statusOpen, setStatusOpen] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
   const updater = useUpdater();
 
@@ -358,6 +360,7 @@ export default function App() {
         onDelete={handleDelete}
         onStar={handleStar}
         onOpenSettings={() => setSettingsOpen(true)}
+        onOpenStatus={() => setStatusOpen(true)}
         onAddProject={handleAddProject}
         onAddProjectPath={handleAddProjectPath}
         onCancelAddProject={() => setAddingProject(false)}
@@ -387,6 +390,7 @@ export default function App() {
           onFork={handleFork}
           onSend={handleSend}
           modelPull={modelPull}
+          onOpenStatus={() => setStatusOpen(true)}
         />
         {activeProjectId && !activeId && (
           <div className="px-6">
@@ -420,6 +424,7 @@ export default function App() {
       </main>
       <ContextPanel data={mentionContext} open={contextPanelOpen} onClose={() => setContextPanelOpen(false)} />
       <ToolActivity events={toolEvents} open={toolPanelOpen} onClose={() => setToolPanelOpen(false)} />
+      <StatusPage open={statusOpen} onClose={() => setStatusOpen(false)} />
       <Settings open={settingsOpen} onClose={() => setSettingsOpen(false)} onRefresh={refreshConversations} updater={updater} />
       {instructionsProjectId && (
         <InstructionsEditor

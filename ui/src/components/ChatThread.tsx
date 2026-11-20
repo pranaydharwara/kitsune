@@ -21,9 +21,10 @@ interface ChatThreadProps {
   onFork?: (messageId: string) => void;
   onSend?: (text: string) => void;
   modelPull?: ModelPullEvent | null;
+  onOpenStatus?: () => void;
 }
 
-export function ChatThread({ messages, streamingText, isStreaming, error, routeInfo, speed: _speed, toolEvents, resolvedMentions, onRetry, onEdit, onFork, onSend, modelPull }: ChatThreadProps) {
+export function ChatThread({ messages, streamingText, isStreaming, error, routeInfo, speed: _speed, toolEvents, resolvedMentions, onRetry, onEdit, onFork, onSend, modelPull, onOpenStatus }: ChatThreadProps) {
   const bottomRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -146,7 +147,16 @@ export function ChatThread({ messages, streamingText, isStreaming, error, routeI
             className="mb-8 px-4 py-3 rounded-xl text-sm"
             style={{ background: 'var(--bg-secondary)', color: '#d63031', border: '1px solid var(--border-light)' }}
           >
-            {error}
+            <div>{error}</div>
+            {(error.toLowerCase().includes('connection') || error.toLowerCase().includes('failed to download') || error.toLowerCase().includes('unavailable')) && onOpenStatus && (
+              <button
+                onClick={onOpenStatus}
+                className="mt-2 px-3 py-1.5 rounded-lg text-xs font-medium cursor-pointer transition-all active:scale-[0.97]"
+                style={{ background: 'var(--accent)', color: 'white' }}
+              >
+                Check Status
+              </button>
+            )}
           </div>
         )}
         <div ref={bottomRef} />

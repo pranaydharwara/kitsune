@@ -373,6 +373,81 @@ async def chat(req: ChatRequest, request: Request):
     return EventSourceResponse(event_stream())
 
 
+@router.get("/status")
+async def get_status(request: Request):
+    http: httpx.AsyncClient = request.app.state.http
+    import shutil
+
+    ollama_installed = shutil.which("ollama") is not None
+    ollama_running = False
+    ollama_models: list[str] = []
+    try:
+        r = await http.get("/api/tags", timeout=2)
+        if r.status_code == 200:
+            ollama_running = True
+            ollama_models = [m["name"] for m in r.json().get("models", [])]
+    except Exception:
+        pass
+
+    claude_ready = _is_claude_available()
+    from core import settings as app_settings
+    settings_data = app_settings.load()
+    has_api_key = bool(settings_data.get("anthropic_api_key"))
+
+    return {
+        "ollama": {
+            "installed": ollama_installed,
+            "running": ollama_running,
+            "models": ollama_models,
+            "url": OLLAMA_BASE_URL,
+        },
+        "claude": {
+            "available": claude_ready,
+            "has_api_key": has_api_key,
+        },
+        "default_model": MAIN_MODEL,
+    }
+
+
+@router.post("/ollama/start")
+async def start_ollama():
+    import shutil
+    import subprocess
+
+    ollama_path = shutil.which("ollama")
+    if not ollama_path:
+        return {"ok": False, "error": "Ollama is not installed. Download it from https://ollama.com"}
+
+    try:
+        r = httpx.get(f"{OLLAMA_BASE_URL}/api/tags", timeout=2)
+        if r.status_code == 200:
+            return {"ok": True, "status": "already_running"}
+    except (httpx.ConnectError, httpx.TimeoutException):
+        pass
+
+    try:
+        subprocess.Popen(
+            [ollama_path, "serve"],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+    except OSError as e:
+        return {"ok": False, "error": f"Failed to start Ollama: {e}"}
+
+    for _ in range(30):
+        await asyncio.sleep(0.5)
+        try:
+            async with httpx.AsyncClient() as client:
+                r = await client.get(f"{OLLAMA_BASE_URL}/api/tags", timeout=2)
+                if r.status_code == 200:
+                    _model_cache["ts"] = 0
+                    return {"ok": True, "status": "started"}
+        except Exception:
+            continue
+
+    return {"ok": False, "error": "Ollama started but is not responding yet. Try again in a moment."}
+
+
 @router.post("/chat/{conversation_id}/cancel")
 async def cancel_stream(conversation_id: str):
     event = _active_streams.get(conversation_id)
