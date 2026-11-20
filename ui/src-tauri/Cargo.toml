@@ -1,6 +1,6 @@
 [package]
 name = "kitsune"
-version = "0.1.12"
+version = "0.1.13"
 description = "Kitsune — local-first AI chat for macOS"
 authors = ["Pranay Wara"]
 license = "MIT"
