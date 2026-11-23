@@ -139,7 +139,7 @@ jobs:
             See the [changelog](https://github.com/pranaydharwara/kitsune/commits/${{ steps.bump.outputs.tag }}) for details.
           releaseDraft: false
           prerelease: false
-          includeUpdaterJson: false
+          includeUpdaterJson: true
           args: --target aarch64-apple-darwin
 
       - name: Build Tauri app (Intel)
